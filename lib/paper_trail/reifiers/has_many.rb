@@ -39,10 +39,10 @@ module PaperTrail
             elsif version.event == "create"
               options[:mark_for_destruction] ? record.tap(&:mark_for_destruction) : nil
             else
+              # RC: Removed defaults for has_one / has_many to ensure nested models
+              # are automatically reified
               version.reify(
                 options.merge(
-                  has_many: false,
-                  has_one: false,
                   belongs_to: false,
                   has_and_belongs_to_many: false
                 )
@@ -53,12 +53,13 @@ module PaperTrail
           # Reify the rest of the versions and add them to the collection, these
           # versions are for those that have been removed from the live
           # associations.
+
+          # RC: Removed defaults for has_one / has_many to ensure nested models
+          # are automatically reified
           array.concat(
             versions.values.map { |v|
               v.reify(
                 options.merge(
-                  has_many: false,
-                  has_one: false,
                   belongs_to: false,
                   has_and_belongs_to_many: false
                 )

@@ -44,10 +44,10 @@ module PaperTrail
 
         # @api private
         def noncreate_event(assoc, model, options, version)
+          # RC: Removed defaults for has_one / has_many to ensure nested models
+          # are automatically reified
           child = version.reify(
             options.merge(
-              has_many: false,
-              has_one: false,
               belongs_to: false,
               has_and_belongs_to_many: false
             )
