@@ -96,6 +96,9 @@ module PaperTrail
         # from the point in time identified by `tx_id` or `version_at`.
         # @api private
         def load_versions_for_hm_association(assoc, model, version_table, tx_id, version_at)
+          puts "Association name: #{assoc.name}"
+          puts "version_at: #{version_at}"
+          byebug
           version_id_subquery = ::PaperTrail::VersionAssociation.
             joins(model.class.version_association_name).
             select("MIN(version_id)").
@@ -105,6 +108,7 @@ module PaperTrail
             where("created_at >= ? OR transaction_id = ?", version_at, tx_id).
             group("item_id").
             to_sql
+          puts "SQL: #{version_id_subquery}"
           versions_by_id(model.class, version_id_subquery)
         end
       end
