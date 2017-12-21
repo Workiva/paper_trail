@@ -3,7 +3,32 @@
 This project follows [semver 2.0.0](http://semver.org/spec/v2.0.0.html) and the
 recommendations of [keepachangelog.com](http://keepachangelog.com/).
 
-## Unreleased
+## 9.0.0 (Unreleased)
+
+### Breaking Changes
+
+- Drop support for ruby 2.2, [whose EoL is the end of March,
+  2018](https://www.ruby-lang.org/en/news/2017/09/14/ruby-2-2-8-released/)
+- Assume that all strings returned by PaperTrail are frozen.
+- Removed deprecated `Version#originator`, use `#paper_trail_originator`
+- Using paper_trail.on_destroy(:after) with ActiveRecord's
+  belongs_to_required_by_default will produce an error instead of a warning.
+- Failing to set PaperTrail.config.track_associations will no longer produce
+  a warning. The default (false) will remain the same.
+- Removed `warn_about_not_setting_whodunnit` controller method. Please remove
+  callbacks like `skip_after_action :warn_about_not_setting_whodunnit`.
+- Using where_object_changes to read YAML from a text column will now raise
+  error, was deprecated in 8.1.0.
+
+### Added
+
+- None
+
+### Fixed
+
+- None
+
+## 8.1.1 (2017-12-10)
 
 ### Breaking Changes
 
@@ -12,6 +37,120 @@ recommendations of [keepachangelog.com](http://keepachangelog.com/).
 ### Added
 
 - None
+
+### Fixed
+
+- [#1018](https://github.com/airblade/paper_trail/pull/1018)
+  Serializing postgres arrays
+
+## 8.1.0 (2017-11-30)
+
+### Breaking Changes
+
+- None
+
+### Added
+
+- [#997](https://github.com/airblade/paper_trail/pull/997)
+  Deprecate `where_object_changes` when reading YAML from a text column
+
+### Fixed
+
+- [#1009](https://github.com/airblade/paper_trail/pull/1009)
+  End generated `config/initializers/paper_trail.rb` with newline.
+
+## 8.0.1 (2017-10-25)
+
+### Breaking Changes
+
+- None
+
+### Added
+
+- None
+
+### Fixed
+
+- [#1003](https://github.com/airblade/paper_trail/pull/1003) - Warn when PT
+  cannot be loaded because rails is not loaded yet.
+
+## 8.0.0 (2017-10-04)
+
+### Breaking Changes
+
+- Drop support for rails 4.0 and 4.1, whose EoL was
+  [2016-06-30](http://weblog.rubyonrails.org/2016/6/30/Rails-5-0-final/)
+- Drop support for ruby 2.1, whose EoL was [2017-04-01](http://bit.ly/2ppWDYa)
+- [#803](https://github.com/airblade/paper_trail/issues/803) -
+  where_object_changes no longer supports reading json from a text column
+
+### Added
+
+- None
+
+### Fixed
+
+- [#996](https://github.com/airblade/paper_trail/pull/996) - Incorrect
+  item_type in association reification query
+
+## 7.1.3 (2017-09-19)
+
+### Breaking Changes
+
+- None
+
+### Added
+
+- None
+
+### Fixed
+
+- [#988](https://github.com/airblade/paper_trail/pull/988) - Fix ActiveRecord
+  version check in `VersionConcern` for Rails 4.0
+
+## 7.1.2 (2017-08-30)
+
+### Breaking Changes
+
+- None
+
+### Added
+
+- None
+
+### Fixed
+
+- [#985](https://github.com/airblade/paper_trail/pull/985) - Fix RecordInvalid
+  error on nil item association when belongs_to_required_by_default is enabled.
+## 7.1.1 (2017-08-18)
+
+### Breaking Changes
+
+- None
+
+### Added
+
+- None
+
+### Fixed
+
+- Stop including unnecessary files in released gem. Reduces .gem file size
+  from 100K to 30K.
+- [#984](https://github.com/airblade/paper_trail/pull/984) - Fix NameError
+  suspected to be caused by autoload race condition.
+
+## 7.1.0 (2017-07-09)
+
+### Breaking Changes
+
+- None
+
+### Added
+
+- [#803](https://github.com/airblade/paper_trail/issues/803)
+  Deprecate `where_object_changes` when reading json from a text column
+- [#976](https://github.com/airblade/paper_trail/pull/976)
+  `PaperTrail.whodunnit` accepts a `Proc`
 
 ### Fixed
 

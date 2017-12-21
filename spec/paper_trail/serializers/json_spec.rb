@@ -1,3 +1,5 @@
+# frozen_string_literal: true
+
 require "spec_helper"
 
 module PaperTrail
@@ -50,6 +52,14 @@ module PaperTrail
             expect(matches.first.right.val).to eq("%\"arg1\":-3.5,%")
             expect(matches.last.right.val).to eq("%\"arg1\":-3.5}%")
           end
+        end
+      end
+
+      describe ".where_object_changes_condition" do
+        it "raises error" do
+          expect {
+            described_class.where_object_changes_condition
+          }.to raise_error(/no longer supports/)
         end
       end
     end

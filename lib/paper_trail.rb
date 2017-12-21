@@ -1,3 +1,6 @@
+# frozen_string_literal: true
+
+require "active_support"
 require "request_store"
 require "paper_trail/cleaner"
 require "paper_trail/config"
@@ -13,6 +16,18 @@ require "paper_trail/serializers/yaml"
 # An ActiveRecord extension that tracks changes to your models, for auditing or
 # versioning.
 module PaperTrail
+  E_RAILS_NOT_LOADED = <<-EOS.squish.freeze
+    PaperTrail has been loaded too early, before rails is loaded. This can
+    happen when another gem defines the ::Rails namespace, then PT is loaded,
+    all before rails is loaded. You may want to reorder your Gemfile, or defer
+    the loading of PT by using `require: false` and a manual require elsewhere.
+  EOS
+  E_TIMESTAMP_FIELD_CONFIG = <<-EOS.squish.freeze
+    PaperTrail.timestamp_field= has been removed, without replacement. It is no
+    longer configurable. The timestamp column in the versions table must now be
+    named created_at.
+  EOS
+
   extend PaperTrail::Cleaner
 
   class << self
@@ -72,11 +87,7 @@ module PaperTrail
     # Set the field which records when a version was created.
     # @api public
     def timestamp_field=(_field_name)
-      raise(
-        "PaperTrail.timestamp_field= has been removed, without replacement. " \
-          "It is no longer configurable. The timestamp field in the versions table " \
-          "must now be named created_at."
-      )
+      raise(E_TIMESTAMP_FIELD_CONFIG)
     end
 
     # Sets who is responsible for any changes that occur. You would normally use
@@ -111,6 +122,8 @@ module PaperTrail
         ensure
           paper_trail_store[:whodunnit] = previous_whodunnit
         end
+      elsif paper_trail_store[:whodunnit].respond_to?(:call)
+        paper_trail_store[:whodunnit].call
       else
         paper_trail_store[:whodunnit]
       end
@@ -145,7 +158,7 @@ module PaperTrail
 
     # @api public
     def transaction?
-      ::ActiveRecord::Base.connection.open_transactions > 0
+      ::ActiveRecord::Base.connection.open_transactions.positive?
     end
 
     # @api public
@@ -185,8 +198,14 @@ ActiveSupport.on_load(:active_record) do
 end
 
 # Require frameworks
-if defined?(::Rails) && ActiveRecord::VERSION::STRING >= "3.2"
-  require "paper_trail/frameworks/rails"
+if defined?(::Rails)
+  # Rails module is sometimes defined by gems like rails-html-sanitizer
+  # so we check for presence of Rails.application.
+  if defined?(::Rails.application)
+    require "paper_trail/frameworks/rails"
+  else
+    ::Kernel.warn(::PaperTrail::E_RAILS_NOT_LOADED)
+  end
 else
   require "paper_trail/frameworks/active_record"
 end

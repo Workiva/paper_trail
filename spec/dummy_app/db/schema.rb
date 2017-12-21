@@ -91,7 +91,7 @@ ActiveRecord::Schema.define(version: 20110208155312) do
     t.string "name"
     t.datetime "created_at"
     t.datetime "updated_at"
-    t.index ["uuid"], name: "sqlite_autoindex_custom_primary_key_records_1", unique: true
+    t.index ["uuid"], unique: true
   end
 
   create_table "customers", force: :cascade do |t|
@@ -109,6 +109,17 @@ ActiveRecord::Schema.define(version: 20110208155312) do
   create_table "editorships", force: :cascade do |t|
     t.integer "book_id"
     t.integer "editor_id"
+  end
+
+  create_table "families", force: :cascade do |t|
+    t.string "name"
+    t.integer "parent_id"
+    t.integer "partner_id"
+  end
+
+  create_table "family_lines", force: :cascade do |t|
+    t.integer "parent_id"
+    t.integer "grandson_id"
   end
 
   create_table "fluxors", force: :cascade do |t|

@@ -1,9 +1,11 @@
+# frozen_string_literal: true
+
 require "spec_helper"
 
 RSpec.describe Gadget, type: :model do
-  it { is_expected.to be_versioned }
-
   let(:gadget) { Gadget.create!(name: "Wrench", brand: "Acme") }
+
+  it { is_expected.to be_versioned }
 
   describe "updates", versioning: true do
     it "generates a version for updates to `name` attribute" do
@@ -32,31 +34,31 @@ RSpec.describe Gadget, type: :model do
 
     context "persisted record without update timestamps" do
       it "only acknowledges non-ignored attrs" do
-        subject = Gadget.create!(created_at: Time.now)
-        subject.name = "Wrench"
-        expect(subject.paper_trail.changed_notably?).to be true
+        gadget = Gadget.create!(created_at: Time.now)
+        gadget.name = "Wrench"
+        expect(gadget.paper_trail.changed_notably?).to be true
       end
 
       it "does not acknowledge ignored attr (brand)" do
-        subject = Gadget.create!(created_at: Time.now)
-        subject.brand = "Acme"
-        expect(subject.paper_trail.changed_notably?).to be false
+        gadget = Gadget.create!(created_at: Time.now)
+        gadget.brand = "Acme"
+        expect(gadget.paper_trail.changed_notably?).to be false
       end
     end
 
     context "persisted record with update timestamps" do
       it "only acknowledges non-ignored attrs" do
-        subject = Gadget.create!(created_at: Time.now)
-        subject.name = "Wrench"
-        subject.updated_at = Time.now
-        expect(subject.paper_trail.changed_notably?).to be true
+        gadget = Gadget.create!(created_at: Time.now)
+        gadget.name = "Wrench"
+        gadget.updated_at = Time.now
+        expect(gadget.paper_trail.changed_notably?).to be true
       end
 
       it "does not acknowledge ignored attrs and timestamps only" do
-        subject = Gadget.create!(created_at: Time.now)
-        subject.brand = "Acme"
-        subject.updated_at = Time.now
-        expect(subject.paper_trail.changed_notably?).to be false
+        gadget = Gadget.create!(created_at: Time.now)
+        gadget.brand = "Acme"
+        gadget.updated_at = Time.now
+        expect(gadget.paper_trail.changed_notably?).to be false
       end
     end
   end

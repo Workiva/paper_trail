@@ -11,7 +11,8 @@ has been destroyed.
 | Version        | Documentation |
 | -------------- | ------------- |
 | Unreleased     | https://github.com/airblade/paper_trail/blob/master/README.md |
-| 7.0.3          | https://github.com/airblade/paper_trail/blob/v7.0.3/README.md |
+| 8.1.1          | https://github.com/airblade/paper_trail/blob/v8.1.1/README.md |
+| 7.1.3          | https://github.com/airblade/paper_trail/blob/v7.1.3/README.md |
 | 6.0.2          | https://github.com/airblade/paper_trail/blob/v6.0.2/README.md |
 | 5.2.3          | https://github.com/airblade/paper_trail/blob/v5.2.3/README.md |
 | 4.2.0          | https://github.com/airblade/paper_trail/blob/v4.2.0/README.md |
@@ -65,7 +66,8 @@ has been destroyed.
 
 | paper_trail    | branch     | tags   | ruby     | activerecord  |
 | -------------- | ---------- | ------ | -------- | ------------- |
-| unreleased     | master     |        | >= 2.1.0 | >= 4.0, < 6   |
+| unreleased     | master     |        | >= 2.2.0 | >= 4.2, < 6   |
+| 8              | master     | v8.x   | >= 2.2.0 | >= 4.2, < 6   |
 | 7              | 7-stable   | v7.x   | >= 2.1.0 | >= 4.0, < 6   |
 | 6              | 6-stable   | v6.x   | >= 1.9.3 | >= 4.0, < 6   |
 | 5              | 5-stable   | v5.x   | >= 1.9.3 | >= 3.0, < 5.1 |
@@ -162,8 +164,8 @@ Here's a helpful table showing what PaperTrail stores:
 | *Model Before* | nil      | widget   | widget    |
 | *Model After*  | widget   | widget   | nil       |
 
-PaperTrail stores the values in the Model Before column.  Most other
-auditing/versioning plugins store the After column.
+PaperTrail stores the values in the Model Before row.  Most other
+auditing/versioning plugins store the After row.
 
 ### 1.d. API Summary
 
@@ -246,9 +248,11 @@ version.index
 version.event
 
 # Query the `versions.object` column (or `object_changes` column), by
-# attributes, using the SQL LIKE operator. Known issue: inconsistent results for
-# numeric values due to limitations of SQL wildcard matchers against the
-# serialized objects.
+# attributes, using the SQL LIKE operator.
+#
+# Known issue: `where_object_changes` with the default YAML serializer and
+# an `object_changes` text column may return incorrect results for numeric values
+# due to limitations of SQL wildcard matchers against the serialized objects.
 PaperTrail::Version.where_object(attr1: val1, attr2: val2)
 PaperTrail::Version.where_object_changes(attr1: val1)
 ```
@@ -716,6 +720,14 @@ PaperTrail.whodunnit('Dorian Marié') do
 end
 ```
 
+`whodunnit` also accepts a `Proc`.
+
+```ruby
+PaperTrail.whodunnit = proc do
+  caller.first{ |c| c.starts_with? Rails.root.to_s }
+end
+```
+
 If your controller has a `current_user` method, PaperTrail provides a
 `before_action` that will assign `current_user.id` to `PaperTrail.whodunnit`.
 You can add this `before_action` to your `ApplicationController`.
@@ -1092,6 +1104,22 @@ As of version 6, PT no longer supports rails 3 or the [protected_attributes][17]
 gem. If you are still using them, you may use PT 5 or lower. We recommend
 upgrading to [strong_parameters][18] as soon as possible.
 
+If you must use [protected_attributes][17] for now, and want to use PT > 5, you
+can reopen `PaperTrail::Version` and add the following `attr_accessible` fields:
+
+```ruby
+# app/models/paper_trail/version.rb
+module PaperTrail
+  class Version < ActiveRecord::Base
+    include PaperTrail::VersionConcern
+    attr_accessible :item_type, :item_id, :event, :whodunnit, :object, :object_changes, :created_at
+  end
+end
+```
+
+This unsupported workaround has been tested with protected_attributes 1.0.9 /
+rails 4.2.8 / paper_trail 7.0.3.
+
 ## 6. Extensibility
 
 ### 6.a. Custom Version Classes
@@ -1283,7 +1311,7 @@ end
 ## 7. Testing
 
 You may want to turn PaperTrail off to speed up your tests.  See [Turning
-PaperTrail Off](#turning-papertrail-off) above.
+PaperTrail Off](#2d-turning-papertrail-off) above.
 
 ### 7.a. Minitest
 
@@ -1508,7 +1536,21 @@ require 'paper_trail/frameworks/rspec'
 ## 8. Integration with Other Libraries
 
 - [ActiveAdmin][42]
+- [paper_trail_manager][46] - Browse, subscribe, view and revert changes to
+  records with rails and paper_trail
+- [rails_admin_history_rollback][51] - History rollback for rails_admin with PT
 - Sinatra - [paper_trail-sinatra][41]
+- [globalize][45] - [globalize-versioning][44]
+- [solidus_papertrail][47] - PT integration for Solidus
+- [paper_trail-globalid][49] - enhances whodunnint by adding an `actor`
+  method to instances of PaperTrail::Version that returns the ActiveRecord
+  object who was responsible for change
+
+## 9. Related Libraries and Ports
+
+- [izelnakri/paper_trail][50] - An Ecto library, inspired by PT.
+- [sequelize-paper-trail][48] - A JS library, inspired by PT. A sequelize
+  plugin for tracking revision history of model instances.
 
 ## Articles
 
@@ -1533,6 +1575,10 @@ Created by Andy Stewart in 2010, maintained since 2012 by Ben Atkins, since 2015
 by Jared Beck, with contributions by over 150 people.
 
 https://github.com/airblade/paper_trail/graphs/contributors
+
+## Contributing
+
+See our [contribution guidelines][43]
 
 ## Inspirations
 
@@ -1582,3 +1628,12 @@ Released under the MIT licence.
 [40]: http://api.rubyonrails.org/classes/ActiveRecord/Associations/ClassMethods.html#module-ActiveRecord::Associations::ClassMethods-label-Polymorphic+Associations
 [41]: https://github.com/jaredbeck/paper_trail-sinatra
 [42]: https://github.com/activeadmin/activeadmin/wiki/Auditing-via-paper_trail-%28change-history%29
+[43]: https://github.com/airblade/paper_trail/blob/master/.github/CONTRIBUTING.md
+[44]: https://github.com/globalize/globalize-versioning
+[45]: https://github.com/globalize/globalize
+[46]: https://github.com/fusion94/paper_trail_manager
+[47]: https://github.com/solidusio-contrib/solidus_papertrail
+[48]: https://github.com/nielsgl/sequelize-paper-trail
+[49]: https://github.com/ankit1910/paper_trail-globalid
+[50]: https://github.com/izelnakri/paper_trail
+[51]: https://github.com/rikkipitt/rails_admin_history_rollback

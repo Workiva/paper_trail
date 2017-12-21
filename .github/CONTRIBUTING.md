@@ -13,11 +13,16 @@ On github, we appreciate bug reports, feature suggestions, and pull requests.
 
 Please use our [bug report template][1].
 
+## Reporting Security Vulnerabilities
+
+Please email jared@jaredbeck.com, batkinz@gmail.com
+
+We will respond as soon as we can. Thank you for responsibly disclosing
+security vulnerabilities.
+
 ## Development
 
-Install gems with `bundle exec appraisal install`. This requires ruby >= 2.0.
-(It is still possible to run the `ar-4.2` gemfile locally on ruby 1.9.3, but
-not the `ar-5.0` gemfile.)
+Install gems with `bundle exec appraisal install`.
 
 Testing is a little awkward because the test suite:
 
@@ -107,9 +112,9 @@ DB=postgres bundle exec rake prepare
 # See spec/dummy_app/config/boot.rb for a complete explanation.
 cd spec/dummy_app
 export BUNDLE_GEMFILE=../../gemfiles/ar_5.0.gemfile
-DB=postgres RAILS_ENV=test bundle exec rake db:drop db:create db:migrate
-DB=postgres RAILS_ENV=foo bundle exec rake db:drop db:create db:migrate
-DB=postgres RAILS_ENV=bar bundle exec rake db:drop db:create db:migrate
+DB=postgres RAILS_ENV=test bundle exec rake db:environment:set db:drop db:create db:migrate
+DB=postgres RAILS_ENV=foo bundle exec rake db:environment:set db:drop db:create db:migrate
+DB=postgres RAILS_ENV=bar bundle exec rake db:environment:set db:drop db:create db:migrate
 unset BUNDLE_GEMFILE
 cd ../..
 

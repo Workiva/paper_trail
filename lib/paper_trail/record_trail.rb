@@ -1,8 +1,9 @@
+# frozen_string_literal: true
+
 module PaperTrail
   # Represents the "paper trail" for a single record.
   class RecordTrail
-    RAILS_GTE_5_1 = ::ActiveRecord.respond_to?(:gem_version) &&
-      ::ActiveRecord.gem_version >= ::Gem::Version.new("5.1.0.beta1")
+    RAILS_GTE_5_1 = ::ActiveRecord.gem_version >= ::Gem::Version.new("5.1.0.beta1")
 
     def initialize(record)
       @record = record
@@ -168,7 +169,7 @@ module PaperTrail
     def next_version
       subsequent_version = source_version.next
       subsequent_version ? subsequent_version.reify : @record.class.find(@record.id)
-    rescue # TODO: Rescue something more specific
+    rescue StandardError # TODO: Rescue something more specific
       nil
     end
 
@@ -334,13 +335,7 @@ module PaperTrail
     def reset_timestamp_attrs_for_update_if_needed
       return if live?
       @record.send(:timestamp_attributes_for_update_in_model).each do |column|
-        # ActiveRecord 4.2 deprecated `reset_column!` in favor of
-        # `restore_column!`.
-        if @record.respond_to?("restore_#{column}!")
-          @record.send("restore_#{column}!")
-        else
-          @record.send("reset_#{column}!")
-        end
+        @record.send("restore_#{column}!")
       end
     end
 
@@ -399,7 +394,7 @@ module PaperTrail
     # leverage an `after_update` callback anyways (likely for v4.0.0)
     def touch_with_version(name = nil)
       unless @record.persisted?
-        raise ActiveRecordError, "can not touch on a new record object"
+        raise ::ActiveRecord::ActiveRecordError, "can not touch on a new record object"
       end
       attributes = @record.send :timestamp_attributes_for_update_in_model
       attributes << name if name
@@ -475,9 +470,7 @@ module PaperTrail
       if @in_after_callback && RAILS_GTE_5_1
         @record.attribute_before_last_save(attr_name.to_s)
       else
-        # TODO: after dropping support for rails 4.0, remove send, because
-        # attribute_was is no longer private.
-        @record.send(:attribute_was, attr_name.to_s)
+        @record.attribute_was(attr_name.to_s)
       end
     end
 
@@ -509,7 +502,7 @@ module PaperTrail
     end
 
     def log_version_errors(version, action)
-      version.logger && version.logger.warn(
+      version.logger&.warn(
         "Unable to create version for #{action} of #{@record.class.name}" +
           "##{@record.id}: " + version.errors.full_messages.join(", ")
       )

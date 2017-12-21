@@ -1,3 +1,5 @@
+# frozen_string_literal: true
+
 require "rails/generators"
 require "rails/generators/active_record"
 
@@ -43,7 +45,7 @@ module PaperTrail
     def create_initializer
       create_file(
         "config/initializers/paper_trail.rb",
-        "PaperTrail.config.track_associations = #{!!options.with_associations?}"
+        "PaperTrail.config.track_associations = #{!!options.with_associations?}\n"
       )
     end
 

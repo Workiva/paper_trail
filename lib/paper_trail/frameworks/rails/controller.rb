@@ -1,3 +1,5 @@
+# frozen_string_literal: true
+
 module PaperTrail
   module Rails
     # Extensions to rails controllers. Provides convenient ways to pass certain
@@ -66,24 +68,17 @@ module PaperTrail
 
       # Tells PaperTrail who is responsible for any changes that occur.
       def set_paper_trail_whodunnit
-        @set_paper_trail_whodunnit_called = true
-        ::PaperTrail.whodunnit = user_for_paper_trail if ::PaperTrail.enabled_for_controller?
+        if ::PaperTrail.enabled_for_controller?
+          ::PaperTrail.whodunnit = user_for_paper_trail
+        end
       end
 
       # Tells PaperTrail any information from the controller you want to store
       # alongside any changes that occur.
       def set_paper_trail_controller_info
-        ::PaperTrail.controller_info = info_for_paper_trail if ::PaperTrail.enabled_for_controller?
-      end
-
-      # We have removed this warning. We no longer add it as a callback.
-      # However, some people use `skip_after_action :warn_about_not_setting_whodunnit`,
-      # so removing this method would be a breaking change. We can remove it
-      # in the next major version.
-      def warn_about_not_setting_whodunnit
-        ::ActiveSupport::Deprecation.warn(
-          "warn_about_not_setting_whodunnit is a no-op and is deprecated."
-        )
+        if ::PaperTrail.enabled_for_controller?
+          ::PaperTrail.controller_info = info_for_paper_trail
+        end
       end
     end
   end

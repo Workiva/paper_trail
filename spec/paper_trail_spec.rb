@@ -1,6 +1,30 @@
+# frozen_string_literal: true
+
 require "spec_helper"
 
 RSpec.describe PaperTrail do
+  describe "#config", versioning: true do
+    it "allows for config values to be set" do
+      expect(described_class.config.enabled).to eq(true)
+      described_class.config.enabled = false
+      expect(described_class.config.enabled).to eq(false)
+    end
+
+    it "accepts blocks and yield the config instance" do
+      expect(described_class.config.enabled).to eq(true)
+      described_class.config { |c| c.enabled = false }
+      expect(described_class.config.enabled).to eq(false)
+    end
+  end
+
+  describe "#configure" do
+    it "is an alias for the `config` method" do
+      expect(described_class.method(:configure)).to eq(
+        described_class.method(:config)
+      )
+    end
+  end
+
   describe ".gem_version" do
     it "returns a Gem::Version" do
       v = described_class.gem_version
@@ -75,14 +99,6 @@ RSpec.describe PaperTrail do
   end
 
   describe ".whodunnit" do
-    context "when set globally" do
-      before(:all) { described_class.whodunnit = "foobar" }
-
-      it "is set to `nil` by default" do
-        expect(described_class.whodunnit).to be_nil
-      end
-    end
-
     context "with block passed" do
       it "sets whodunnit only for the block passed" do
         described_class.whodunnit("foo") do
@@ -101,13 +117,14 @@ RSpec.describe PaperTrail do
         expect(described_class.whodunnit).to be_nil
       end
     end
-  end
 
-  describe ".controller_info" do
-    before(:all) { described_class.controller_info = { foo: "bar" } }
-
-    it "is set to an empty hash before each test" do
-      expect(described_class.controller_info).to eq({})
+    context "when set to a proc" do
+      it "evaluates the proc each time a version is made" do
+        call_count = 0
+        described_class.whodunnit = proc { call_count += 1 }
+        expect(described_class.whodunnit).to eq(1)
+        expect(described_class.whodunnit).to eq(2)
+      end
     end
   end
 end

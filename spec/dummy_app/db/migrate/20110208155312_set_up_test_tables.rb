@@ -1,3 +1,5 @@
+# frozen_string_literal: true
+
 # Parts of this migration must be kept in sync with
 # `lib/generators/paper_trail/templates/create_versions.rb`
 #
@@ -59,6 +61,15 @@ class SetUpTestTables < (
       t.boolean   :a_boolean
       t.string    :type
       t.timestamps null: true
+    end
+
+    if ENV["DB"] == "postgres"
+      create_table :postgres_users, force: true do |t|
+        t.string     :name
+        t.integer    :post_ids,    array: true
+        t.datetime   :login_times, array: true
+        t.timestamps null: true
+      end
     end
 
     create_table :versions, versions_table_options do |t|
@@ -315,6 +326,17 @@ class SetUpTestTables < (
       t.datetime :created_at
     end
     add_index :custom_primary_key_record_versions, %i[item_type item_id], name: "idx_cust_pk_item"
+
+    create_table :family_lines do |t|
+      t.integer :parent_id
+      t.integer :grandson_id
+    end
+
+    create_table :families do |t|
+      t.string :name
+      t.integer :parent_id
+      t.integer :partner_id
+    end
   end
 
   def down

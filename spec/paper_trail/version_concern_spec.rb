@@ -1,8 +1,9 @@
+# frozen_string_literal: true
+
 require "spec_helper"
+require "support/alt_db_init"
 
 RSpec.describe PaperTrail::VersionConcern do
-  before(:all) { require "support/alt_db_init" }
-
   it "allows included class to have different connections" do
     expect(Foo::Version.connection).not_to eq(Bar::Version.connection)
   end

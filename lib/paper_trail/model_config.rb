@@ -1,3 +1,5 @@
+# frozen_string_literal: true
+
 require "active_support/core_ext"
 
 module PaperTrail
@@ -6,7 +8,7 @@ module PaperTrail
   class ModelConfig
     E_CANNOT_RECORD_AFTER_DESTROY = <<-STR.strip_heredoc.freeze
       paper_trail.on_destroy(:after) is incompatible with ActiveRecord's
-      belongs_to_required_by_default and has no effect. Please use :before
+      belongs_to_required_by_default. Use on_destroy(:before)
       or disable belongs_to_required_by_default.
     STR
 
@@ -45,7 +47,7 @@ module PaperTrail
       end
 
       if recording_order.to_s == "after" && cannot_record_after_destroy?
-        ::ActiveSupport::Deprecation.warn(E_CANNOT_RECORD_AFTER_DESTROY)
+        raise E_CANNOT_RECORD_AFTER_DESTROY
       end
 
       @model_class.send(
@@ -59,7 +61,7 @@ module PaperTrail
 
     # Adds a callback that records a version after an "update" event.
     def on_update
-      @model_class.before_save(on: :update) { |r|
+      @model_class.before_save { |r|
         r.paper_trail.reset_timestamp_attrs_for_update_if_needed
       }
       @model_class.after_update { |r|
@@ -79,13 +81,6 @@ module PaperTrail
       options[:on] ||= %i[create update destroy]
       options[:on] = Array(options[:on]) # Support single symbol
       @model_class.send :include, ::PaperTrail::Model::InstanceMethods
-      if ::ActiveRecord::VERSION::STRING < "4.2"
-        ::ActiveSupport::Deprecation.warn(
-          "Your version of ActiveRecord (< 4.2) has reached EOL. PaperTrail " \
-          "will soon drop support. Please upgrade ActiveRecord ASAP."
-        )
-        @model_class.send :extend, AttributeSerializers::LegacyActiveRecordShim
-      end
       setup_options(options)
       setup_associations(options)
       setup_transaction_callbacks

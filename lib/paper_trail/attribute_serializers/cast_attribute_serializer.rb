@@ -1,3 +1,7 @@
+# frozen_string_literal: true
+
+require "paper_trail/attribute_serializers/attribute_serializer_factory"
+
 module PaperTrail
   # :nodoc:
   module AttributeSerializers
@@ -6,8 +10,7 @@ module PaperTrail
     # to an attribute of type `ActiveRecord::Type::Integer`.
     #
     # This implementation depends on the `type_for_attribute` method, which was
-    # introduced in rails 4.2. In older versions of rails, we shim this method
-    # with `LegacyActiveRecordShim`.
+    # introduced in rails 4.2. As of PT 8, we no longer support rails < 4.2.
     class CastAttributeSerializer
       def initialize(klass)
         @klass = klass
@@ -33,7 +36,7 @@ module PaperTrail
       # This implementation uses AR 5's `serialize` and `deserialize`.
       class CastAttributeSerializer
         def serialize(attr, val)
-          @klass.type_for_attribute(attr).serialize(val)
+          AttributeSerializerFactory.for(@klass, attr).serialize(val)
         end
 
         def deserialize(attr, val)
@@ -41,7 +44,7 @@ module PaperTrail
             # Because PT 4 used to save the string version of enums to `object_changes`
             val
           else
-            @klass.type_for_attribute(attr).deserialize(val)
+            AttributeSerializerFactory.for(@klass, attr).deserialize(val)
           end
         end
       end
