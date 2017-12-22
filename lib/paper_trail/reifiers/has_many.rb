@@ -17,7 +17,6 @@ module PaperTrail
           )
           collection = Array.new model.send(assoc.name).reload # to avoid cache
           prepare_array(collection, options, versions)
-          byebug
           model.send(assoc.name).proxy_association.target = collection
         end
 
@@ -37,6 +36,7 @@ module PaperTrail
           # Iterate each child to replace it with the previous value if there is
           # a version after the timestamp.
           array.map! do |record|
+            byebug
             if (version = versions.delete(record.id)).nil?
               record
             elsif version.event == "create"
