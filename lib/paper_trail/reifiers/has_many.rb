@@ -99,11 +99,11 @@ module PaperTrail
         def load_versions_for_hm_association(assoc, model, version_table, tx_id, version_at)
           version_id_subquery = ::PaperTrail::VersionAssociation.
             joins(model.class.version_association_name).
-            select("MAX(version_id)").
+            select("MIN(version_id)").
             where("foreign_key_name = ?", assoc.foreign_key).
             where("foreign_key_id = ?", model.id).
             where("#{version_table}.item_type = ?", assoc.klass.name).
-            where("created_at <= ? OR transaction_id = ?", version_at + 5.seconds, tx_id).
+            where("created_at >= ? OR transaction_id = ?", version_at, tx_id).
             group("item_id").
             to_sql
           versions_by_id(model.class, version_id_subquery)
