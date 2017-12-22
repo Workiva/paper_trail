@@ -105,6 +105,7 @@ module PaperTrail
             where("created_at <= ? OR transaction_id = ?", version_at + 5.seconds, tx_id).
             group("item_id").
             to_sql
+          byebug
           versions_by_id(model.class, version_id_subquery)
         end
       end
