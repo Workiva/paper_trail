@@ -16,7 +16,6 @@ module PaperTrail
             options[:version_at]
           )
           collection = Array.new model.send(assoc.name).reload # to avoid cache
-          byebug
           prepare_array(collection, options, versions)
           model.send(assoc.name).proxy_association.target = collection
         end
