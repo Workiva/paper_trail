@@ -16,6 +16,7 @@ module PaperTrail
             options[:version_at]
           )
           collection = Array.new model.send(assoc.name).reload # to avoid cache
+          byebug
           prepare_array(collection, options, versions)
           model.send(assoc.name).proxy_association.target = collection
         end
@@ -105,7 +106,6 @@ module PaperTrail
             where("created_at <= ? OR transaction_id = ?", version_at + 5.seconds, tx_id).
             group("item_id").
             to_sql
-          byebug
           versions_by_id(model.class, version_id_subquery)
         end
       end
