@@ -1,15 +1,19 @@
+# frozen_string_literal: true
+
 require "spec_helper"
 require "generator_spec/test_case"
-require File.expand_path("../../../lib/generators/paper_trail/install_generator", __FILE__)
+require File.expand_path("../../../lib/generators/paper_trail/install_generator", __dir__)
 
 RSpec.describe PaperTrail::InstallGenerator, type: :generator do
   include GeneratorSpec::TestCase
-  destination File.expand_path("../tmp", __FILE__)
+  destination File.expand_path("tmp", __dir__)
 
-  after(:all) { prepare_destination } # cleanup the tmp directory
+  after do
+    prepare_destination # cleanup the tmp directory
+  end
 
   describe "no options" do
-    before(:all) do
+    before do
       prepare_destination
       run_generator
     end
@@ -48,7 +52,7 @@ RSpec.describe PaperTrail::InstallGenerator, type: :generator do
   end
 
   describe "`--with-changes` option set to `true`" do
-    before(:all) do
+    before do
       prepare_destination
       run_generator %w[--with-changes]
     end

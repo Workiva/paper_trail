@@ -1,4 +1,5 @@
-require "active_support/concern"
+# frozen_string_literal: true
+
 require "paper_trail/attribute_serializers/object_changes_attribute"
 require "paper_trail/queries/versions/where_object"
 require "paper_trail/queries/versions/where_object_changes"
@@ -12,7 +13,11 @@ module PaperTrail
     extend ::ActiveSupport::Concern
 
     included do
-      belongs_to :item, polymorphic: true
+      if ::ActiveRecord.gem_version >= Gem::Version.new("5.0")
+        belongs_to :item, polymorphic: true, optional: true
+      else
+        belongs_to :item, polymorphic: true
+      end
 
       # Since the test suite has test coverage for this, we want to declare
       # the association when the test suite is running. This makes it pass when
@@ -155,7 +160,7 @@ module PaperTrail
 
       def primary_key_is_int?
         @primary_key_is_int ||= columns_hash[primary_key].type == :integer
-      rescue
+      rescue StandardError # TODO: Rescue something more specific
         true
       end
 
@@ -224,11 +229,6 @@ module PaperTrail
     # Returns who put the item into the state stored in this version.
     def paper_trail_originator
       @paper_trail_originator ||= previous.try(:whodunnit)
-    end
-
-    def originator
-      ::ActiveSupport::Deprecation.warn "Use paper_trail_originator instead of originator."
-      paper_trail_originator
     end
 
     # Returns who changed the item from the state it had in this version. This
@@ -300,7 +300,7 @@ module PaperTrail
       else
         begin
           PaperTrail.serializer.load(object_changes)
-        rescue # TODO: Rescue something specific
+        rescue StandardError # TODO: Rescue something more specific
           {}
         end
       end

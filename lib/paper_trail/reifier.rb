@@ -1,3 +1,5 @@
+# frozen_string_literal: true
+
 require "paper_trail/attribute_serializers/object_attribute"
 require "paper_trail/reifiers/belongs_to"
 require "paper_trail/reifiers/has_and_belongs_to_many"
@@ -54,7 +56,7 @@ module PaperTrail
       # @api private
       def each_enabled_association(associations)
         associations.each do |assoc|
-          next unless assoc.klass.paper_trail.enabled?
+          next unless ::PaperTrail.request.enabled_for_model?(assoc.klass)
           yield assoc
         end
       end
@@ -192,7 +194,7 @@ module PaperTrail
       # @api private
       def reify_habtm_associations(transaction_id, model, options = {})
         model.class.reflect_on_all_associations(:has_and_belongs_to_many).each do |assoc|
-          pt_enabled = assoc.klass.paper_trail.enabled?
+          pt_enabled = ::PaperTrail.request.enabled_for_model?(assoc.klass)
           next unless model.class.paper_trail_save_join_tables.include?(assoc.name) || pt_enabled
           Reifiers::HasAndBelongsToMany.reify(pt_enabled, assoc, model, options, transaction_id)
         end

@@ -1,3 +1,5 @@
+# frozen_string_literal: true
+
 require "spec_helper"
 
 module PaperTrail
@@ -6,7 +8,7 @@ module PaperTrail
       let(:word_hash) {
         (1..4).each_with_object({}) { |i, a| a["key#{i}"] = ::FFaker::Lorem.word }
       }
-      let(:word_array) { [].fill(0, rand(5) + 4) { ::FFaker::Lorem.word } }
+      let(:word_array) { [].fill(0, rand(4..8)) { ::FFaker::Lorem.word } }
 
       describe ".load" do
         it "deserialize JSON to Ruby" do
@@ -50,6 +52,14 @@ module PaperTrail
             expect(matches.first.right.val).to eq("%\"arg1\":-3.5,%")
             expect(matches.last.right.val).to eq("%\"arg1\":-3.5}%")
           end
+        end
+      end
+
+      describe ".where_object_changes_condition" do
+        it "raises error" do
+          expect {
+            described_class.where_object_changes_condition
+          }.to raise_error(/no longer supports/)
         end
       end
     end

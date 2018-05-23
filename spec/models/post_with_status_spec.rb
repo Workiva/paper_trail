@@ -1,3 +1,5 @@
+# frozen_string_literal: true
+
 require "spec_helper"
 
 RSpec.describe PostWithStatus, type: :model do
@@ -21,12 +23,11 @@ RSpec.describe PostWithStatus, type: :model do
     end
 
     context "storing enum object_changes" do
-      subject { post.versions.last }
-
       it "saves the enum value properly in versions object_changes" do
         post.published!
         post.archived!
-        expect(subject.changeset["status"]).to eql %w[published archived]
+        post_version = post.versions.last
+        expect(post_version.changeset["status"]).to eql(%w[published archived])
       end
     end
 
@@ -35,8 +36,21 @@ RSpec.describe PostWithStatus, type: :model do
         post = described_class.create(status: :draft)
         expect(post.versions.count).to eq(1)
         expect(post.status).to eq("draft")
-        Timecop.travel 1.second.since # because MySQL lacks fractional seconds precision
+        allow(::ActiveSupport::Deprecation).to receive(:warn)
         post.paper_trail.touch_with_version
+        expect(::ActiveSupport::Deprecation).to have_received(:warn).once
+        expect(post.versions.count).to eq(2)
+        expect(post.versions.last[:object]).to include("status: 0")
+        expect(post.paper_trail.previous_version.status).to eq("draft")
+      end
+    end
+
+    describe "#save_with_version" do
+      it "preserves the enum value (and all other attributes)" do
+        post = described_class.create(status: :draft)
+        expect(post.versions.count).to eq(1)
+        expect(post.status).to eq("draft")
+        post.paper_trail.save_with_version
         expect(post.versions.count).to eq(2)
         expect(post.versions.last[:object]).to include("status: 0")
         expect(post.paper_trail.previous_version.status).to eq("draft")

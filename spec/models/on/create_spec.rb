@@ -1,3 +1,5 @@
+# frozen_string_literal: true
+
 require "spec_helper"
 require_dependency "on/create"
 
@@ -21,6 +23,15 @@ module On
         record.destroy
         expect(record.versions.length).to(eq(1))
         expect(record.versions.last.event).to(eq("banana"))
+      end
+    end
+
+    describe "#touch" do
+      it "does not create a version" do
+        record = described_class.create(name: "Alice")
+        expect { record.touch }.not_to(
+          change { record.versions.count }
+        )
       end
     end
   end

@@ -1,3 +1,5 @@
+# frozen_string_literal: true
+
 # Parts of this migration must be kept in sync with
 # `lib/generators/paper_trail/templates/create_versions.rb`
 #
@@ -30,6 +32,10 @@ class SetUpTestTables < (
       t.string :name, null: false
     end
 
+    create_table :on_touch, force: true do |t|
+      t.string :name, null: false
+    end
+
     create_table :on_update, force: true do |t|
       t.string :name, null: false
     end
@@ -38,13 +44,14 @@ class SetUpTestTables < (
     create_table :vehicles, force: true do |t|
       t.string :name, null: false
       t.string :type, null: false
-      t.timestamps null: false
+      t.integer :owner_id
+      t.timestamps null: false, limit: 6
     end
 
     create_table :skippers, force: true do |t|
       t.string     :name
-      t.datetime   :another_timestamp
-      t.timestamps null: true
+      t.datetime   :another_timestamp, limit: 6
+      t.timestamps null: true, limit: 6
     end
 
     create_table :widgets, force: true do |t|
@@ -53,12 +60,21 @@ class SetUpTestTables < (
       t.integer   :an_integer
       t.float     :a_float
       t.decimal   :a_decimal, precision: 6, scale: 4
-      t.datetime  :a_datetime
+      t.datetime  :a_datetime, limit: 6
       t.time      :a_time
       t.date      :a_date
       t.boolean   :a_boolean
       t.string    :type
-      t.timestamps null: true
+      t.timestamps null: true, limit: 6
+    end
+
+    if ENV["DB"] == "postgres"
+      create_table :postgres_users, force: true do |t|
+        t.string     :name
+        t.integer    :post_ids,    array: true
+        t.datetime   :login_times, array: true, limit: 6
+        t.timestamps null: true, limit: 6
+      end
     end
 
     create_table :versions, versions_table_options do |t|
@@ -69,7 +85,7 @@ class SetUpTestTables < (
       t.text     :object, limit: TEXT_BYTES
       t.text     :object_changes, limit: TEXT_BYTES
       t.integer  :transaction_id
-      t.datetime :created_at
+      t.datetime :created_at, limit: 6
 
       # Metadata columns.
       t.integer :answer
@@ -100,7 +116,7 @@ class SetUpTestTables < (
       t.string   :event,     null: false
       t.string   :whodunnit
       t.text     :object
-      t.datetime :created_at
+      t.datetime :created_at, limit: 6
 
       # Controller info columns.
       t.string :ip
@@ -116,17 +132,17 @@ class SetUpTestTables < (
         t.string   :whodunnit
         t.json     :object
         t.json     :object_changes
-        t.datetime :created_at
+        t.datetime :created_at, limit: 6
       end
       add_index :json_versions, %i[item_type item_id]
     end
 
     create_table :not_on_updates, force: true do |t|
-      t.timestamps null: true
+      t.timestamps null: true, limit: 6
     end
 
     create_table :bananas, force: true do |t|
-      t.timestamps null: true
+      t.timestamps null: true, limit: 6
     end
 
     create_table :banana_versions, force: true do |t|
@@ -135,14 +151,14 @@ class SetUpTestTables < (
       t.string   :event,     null: false
       t.string   :whodunnit
       t.text     :object
-      t.datetime :created_at
+      t.datetime :created_at, limit: 6
     end
     add_index :banana_versions, %i[item_type item_id]
 
     create_table :wotsits, force: true do |t|
       t.integer :widget_id
       t.string  :name
-      t.timestamps null: true
+      t.timestamps null: true, limit: 6
     end
 
     create_table :fluxors, force: true do |t|
@@ -198,12 +214,17 @@ class SetUpTestTables < (
 
     create_table :post_with_statuses, force: true do |t|
       t.integer :status
-      t.timestamps null: false
+      t.timestamps null: false, limit: 6
     end
 
     create_table :animals, force: true do |t|
       t.string :name
       t.string :species # single table inheritance column
+    end
+
+    create_table :pets, force: true do |t|
+      t.integer :owner_id
+      t.integer :animal_id
     end
 
     create_table :documents, force: true do |t|
@@ -217,6 +238,7 @@ class SetUpTestTables < (
 
     create_table :things, force: true do |t|
       t.string    :name
+      t.references :person
     end
 
     create_table :translations, force: true do |t|
@@ -229,7 +251,7 @@ class SetUpTestTables < (
     create_table :gadgets, force: true do |t|
       t.string    :name
       t.string    :brand
-      t.timestamps null: true
+      t.timestamps null: true, limit: 6
     end
 
     create_table :customers, force: true do |t|
@@ -302,7 +324,7 @@ class SetUpTestTables < (
     create_table :custom_primary_key_records, id: false, force: true do |t|
       t.column :uuid, :string, primary_key: true
       t.string :name
-      t.timestamps null: true
+      t.timestamps null: true, limit: 6
     end
 
     # and custom_primary_key_record_versions stores the uuid in item_id, a string
@@ -312,9 +334,20 @@ class SetUpTestTables < (
       t.string   :event,     null: false
       t.string   :whodunnit
       t.text     :object
-      t.datetime :created_at
+      t.datetime :created_at, limit: 6
     end
     add_index :custom_primary_key_record_versions, %i[item_type item_id], name: "idx_cust_pk_item"
+
+    create_table :family_lines do |t|
+      t.integer :parent_id
+      t.integer :grandson_id
+    end
+
+    create_table :families do |t|
+      t.string :name
+      t.integer :parent_id
+      t.integer :partner_id
+    end
   end
 
   def down

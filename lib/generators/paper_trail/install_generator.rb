@@ -1,3 +1,5 @@
+# frozen_string_literal: true
+
 require "rails/generators"
 require "rails/generators/active_record"
 
@@ -14,7 +16,7 @@ module PaperTrail
       "ActiveRecord::ConnectionAdapters::Mysql2Adapter"
     ].freeze
 
-    source_root File.expand_path("../templates", __FILE__)
+    source_root File.expand_path("templates", __dir__)
     class_option(
       :with_changes,
       type: :boolean,
@@ -43,7 +45,8 @@ module PaperTrail
     def create_initializer
       create_file(
         "config/initializers/paper_trail.rb",
-        "PaperTrail.config.track_associations = #{!!options.with_associations?}"
+        "PaperTrail.config.track_associations = true\n",
+        "PaperTrail.config.association_reify_error_behaviour = :error"
       )
     end
 
@@ -71,7 +74,7 @@ module PaperTrail
     private
 
     # MySQL 5.6 utf8mb4 limit is 191 chars for keys used in indexes.
-    # See https://github.com/airblade/paper_trail/issues/651
+    # See https://github.com/paper-trail-gem/paper_trail/issues/651
     def item_type_options
       opt = { null: false }
       opt[:limit] = 191 if mysql?

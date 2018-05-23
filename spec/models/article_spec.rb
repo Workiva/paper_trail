@@ -1,3 +1,5 @@
+# frozen_string_literal: true
+
 require "spec_helper"
 
 RSpec.describe Article, type: :model, versioning: true do
@@ -181,6 +183,18 @@ RSpec.describe Article, type: :model, versioning: true do
       expect(PaperTrail::Version.count).to(eq(2))
       expect(article.versions.size).to(eq(2))
       expect(article.versions.map(&:event)).to(match_array(%w[create destroy]))
+    end
+  end
+
+  describe "#touch_with_version" do
+    it "creates a version, ignoring the :only option" do
+      article = described_class.create
+
+      allow(::ActiveSupport::Deprecation).to receive(:warn)
+      expect { article.paper_trail.touch_with_version }.to change {
+        ::PaperTrail::Version.count
+      }.by(+1)
+      expect(::ActiveSupport::Deprecation).to have_received(:warn).once
     end
   end
 end

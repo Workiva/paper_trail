@@ -1,3 +1,5 @@
+# frozen_string_literal: true
+
 require "spec_helper"
 
 RSpec.describe PaperTrail do
@@ -8,12 +10,12 @@ RSpec.describe PaperTrail do
         controller = TestController.new
         controller.send(:set_paper_trail_whodunnit)
         sleep(0.001) while blocked
-        described_class.whodunnit
+        described_class.request.whodunnit
       end
       fast_thread = Thread.new do
         controller = TestController.new
         controller.send(:set_paper_trail_whodunnit)
-        who = described_class.whodunnit
+        who = described_class.request.whodunnit
         blocked = false
         who
       end
@@ -23,22 +25,26 @@ RSpec.describe PaperTrail do
 
   describe "#without_versioning" do
     it "is thread-safe" do
+      allow(::ActiveSupport::Deprecation).to receive(:warn)
       enabled = nil
-      slow_thread = Thread.new do
+      t1 = Thread.new do
         Widget.new.paper_trail.without_versioning do
           sleep(0.01)
-          enabled = Widget.paper_trail.enabled?
+          enabled = described_class.request.enabled_for_model?(Widget)
           sleep(0.01)
         end
         enabled
       end
-      fast_thread = Thread.new do
+      # A second thread is timed so that it runs during the first thread's
+      # `without_versioning` block.
+      t2 = Thread.new do
         sleep(0.005)
-        Widget.paper_trail.enabled?
+        described_class.request.enabled_for_model?(Widget)
       end
-      expect(fast_thread.value).not_to(eq(slow_thread.value))
-      expect(Widget.paper_trail.enabled?).to(eq(true))
-      expect(described_class.enabled_for_model?(Widget)).to(eq(true))
+      expect(t1.value).to eq(false)
+      expect(t2.value).to eq(true) # see? unaffected by t1
+      expect(described_class.request.enabled_for_model?(Widget)).to eq(true)
+      expect(::ActiveSupport::Deprecation).to have_received(:warn).once
     end
   end
 end

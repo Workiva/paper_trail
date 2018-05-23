@@ -1,3 +1,5 @@
+# frozen_string_literal: true
+
 require "spec_helper"
 
 module PaperTrail
@@ -18,21 +20,19 @@ module PaperTrail
     end
 
     it "deletes oldest versions, when the database returns them in a different order" do
-      epoch = DateTime.new(2017, 1, 1)
-
-      widget = Timecop.freeze(epoch) { Widget.create }
+      epoch = Date.new(2017, 1, 1)
+      widget = Widget.create(created_at: epoch)
 
       # Sometimes a database will returns records in a different order than
       # they were inserted. That's hard to get the database to do, so we'll
       # just create them out-of-order:
       (1..5).to_a.shuffle.each do |n|
-        Timecop.freeze(epoch + n.hours) do
-          PaperTrail::Version.create!(
-            item: widget,
-            event: "update",
-            object: { "id" => widget.id, "name" => "Name #{n}" }.to_yaml
-          )
-        end
+        PaperTrail::Version.create!(
+          created_at: epoch + n.hours,
+          item: widget,
+          event: "update",
+          object: { "id" => widget.id, "name" => "Name #{n}" }.to_yaml
+        )
       end
       expect(Widget.find(widget.id).versions.count).to eq(6) # 1 create + 5 updates
 

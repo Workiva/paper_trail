@@ -1,3 +1,5 @@
+# frozen_string_literal: true
+
 # Specify here only version constraints that differ from
 # `paper_trail.gemspec`.
 #
@@ -7,20 +9,25 @@
 # > the version from the appraisal takes precedence.
 # > https://github.com/thoughtbot/appraisal
 
-appraise "ar-4.0" do
-  gem "activerecord", "~> 4.0"
-end
-
 appraise "ar-4.2" do
-  gem "activerecord", "~> 4.2"
-end
-
-appraise "ar-5.0" do
-  gem "activerecord", "~> 5.0.3"
-  gem "rails-controller-testing"
+  gem "activerecord", "~> 4.2.10"
+  gem "database_cleaner", "~> 1.6"
 end
 
 appraise "ar-5.1" do
-  gem "rails", "5.1.1"
+  gem "activerecord", "~> 5.1.5"
   gem "rails-controller-testing"
+end
+
+appraise "ar-5.2" do
+  gem "activerecord", "~> 5.2.0.rc2"
+  gem "rails-controller-testing"
+
+  # bundler does not handle rc versions well
+  # https://github.com/paper-trail-gem/paper_trail/pull/1067
+  # so we specify activesupport, actionpack, and railties, which we
+  # would not normally do, as you can see with other rails versions above.
+  gem "activesupport", "~> 5.2.0.rc2"
+  gem "actionpack", "~> 5.2.0.rc2"
+  gem "railties", "~> 5.2.0.rc2"
 end

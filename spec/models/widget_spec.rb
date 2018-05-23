@@ -1,11 +1,13 @@
+# frozen_string_literal: true
+
 require "spec_helper"
 
 RSpec.describe Widget, type: :model do
+  let(:widget) { Widget.create! name: "Bob", an_integer: 1 }
+
   describe "`be_versioned` matcher" do
     it { is_expected.to be_versioned }
   end
-
-  let(:widget) { Widget.create! name: "Bob", an_integer: 1 }
 
   describe "`have_a_version_with` matcher", versioning: true do
     before do
@@ -18,21 +20,6 @@ RSpec.describe Widget, type: :model do
       expect(widget).to have_a_version_with name: "Leonard", an_integer: 1
       expect(widget).to have_a_version_with an_integer: 1
       expect(widget).to have_a_version_with name: "Tom"
-    end
-  end
-
-  describe "`have_a_version_with_changes` matcher", versioning: true do
-    before do
-      widget.update_attributes!(name: "Leonard", an_integer: 2)
-      widget.update_attributes!(name: "Tom")
-      widget.update_attributes!(name: "Bob")
-    end
-
-    it "is possible to do assertions on version changes" do
-      expect(widget).to have_a_version_with_changes name: "Leonard", an_integer: 2
-      expect(widget).to have_a_version_with_changes an_integer: 2
-      expect(widget).to have_a_version_with_changes name: "Tom"
-      expect(widget).to have_a_version_with_changes name: "Bob"
     end
   end
 
@@ -52,15 +39,10 @@ RSpec.describe Widget, type: :model do
 
   describe "Callbacks", versioning: true do
     describe "before_save" do
-      before { widget.update_attributes!(name: "Foobar") }
-
-      subject { widget.versions.last.reify }
-
       it "resets value for timestamp attrs for update so that value gets updated properly" do
-        # Travel 1 second because MySQL lacks sub-second resolution
-        Timecop.travel(1) do
-          expect { subject.save! }.to change(subject, :updated_at)
-        end
+        widget.update_attributes!(name: "Foobar")
+        w = widget.versions.last.reify
+        expect { w.save! }.to change(w, :updated_at)
       end
     end
 
@@ -73,15 +55,15 @@ RSpec.describe Widget, type: :model do
     end
 
     describe "after_update" do
-      before { widget.update_attributes!(name: "Foobar", updated_at: Time.now + 1.week) }
-
-      subject { widget.versions.last.reify }
-
-      it { expect(subject.paper_trail).not_to be_live }
+      before do
+        widget.update_attributes!(name: "Foobar", updated_at: Time.now + 1.week)
+      end
 
       it "clears the `versions_association_name` virtual attribute" do
-        subject.save!
-        expect(subject.paper_trail).to be_live
+        w = widget.versions.last.reify
+        expect(w.paper_trail).not_to be_live
+        w.save!
+        expect(w.paper_trail).to be_live
       end
 
       it "corresponding version uses the widget updated_at" do
@@ -145,8 +127,9 @@ RSpec.describe Widget, type: :model do
       it "does not clobber the IdentityMap when reifying" do
         widget.update_attributes name: "Henry", created_at: Time.now - 1.day
         widget.update_attributes name: "Harry"
-        expect(ActiveRecord::IdentityMap).to receive(:without).once
+        allow(ActiveRecord::IdentityMap).to receive(:without)
         widget.versions.last.reify
+        expect(ActiveRecord::IdentityMap).to have_receive(:without).once
       end
     end
   end
@@ -192,21 +175,21 @@ RSpec.describe Widget, type: :model do
       let(:new_name) { FFaker::Name.name }
 
       before do
-        PaperTrail.whodunnit = orig_name
+        PaperTrail.request.whodunnit = orig_name
       end
 
       it "returns the originator for the model at a given state" do
         expect(widget.paper_trail).to be_live
         expect(widget.paper_trail.originator).to eq(orig_name)
-        widget.paper_trail.whodunnit(new_name) { |w|
-          w.update_attributes(name: "Elizabeth")
+        ::PaperTrail.request(whodunnit: new_name) {
+          widget.update_attributes(name: "Elizabeth")
         }
         expect(widget.paper_trail.originator).to eq(new_name)
       end
 
       it "returns the appropriate originator" do
         widget.update_attributes(name: "Andy")
-        PaperTrail.whodunnit = new_name
+        PaperTrail.request.whodunnit = new_name
         widget.update_attributes(name: "Elizabeth")
         reified_widget = widget.versions[1].reify
         expect(reified_widget.paper_trail.originator).to eq(orig_name)
@@ -215,7 +198,7 @@ RSpec.describe Widget, type: :model do
 
       it "can create a new instance with options[:dup]" do
         widget.update_attributes(name: "Andy")
-        PaperTrail.whodunnit = new_name
+        PaperTrail.request.whodunnit = new_name
         widget.update_attributes(name: "Elizabeth")
         reified_widget = widget.versions[1].reify(dup: true)
         expect(reified_widget.paper_trail.originator).to eq(orig_name)
@@ -235,64 +218,59 @@ RSpec.describe Widget, type: :model do
   end
 
   describe "#whodunnit", versioning: true do
-    context "no block given" do
-      it "raises an error" do
-        expect {
-          widget.paper_trail.whodunnit("Ben")
-        }.to raise_error(ArgumentError, "expected to receive a block")
-      end
-    end
-
-    context "block given" do
-      let(:orig_name) { FFaker::Name.name }
-      let(:new_name) { FFaker::Name.name }
-
-      before do
-        PaperTrail.whodunnit = orig_name
-        expect(widget.versions.last.whodunnit).to eq(orig_name) # persist `widget`
-      end
-
-      it "modifies value of `PaperTrail.whodunnit` while executing the block" do
-        widget.paper_trail.whodunnit(new_name) do
-          expect(PaperTrail.whodunnit).to eq(new_name)
-          widget.update_attributes(name: "Elizabeth")
-        end
-        expect(widget.versions.last.whodunnit).to eq(new_name)
-      end
-
-      it "reverts value of whodunnit to previous value after executing the block" do
-        widget.paper_trail.whodunnit(new_name) { |w|
-          w.update_attributes(name: "Elizabeth")
-        }
-        expect(PaperTrail.whodunnit).to eq(orig_name)
-      end
-
-      it "reverts to previous value, even if error within block" do
-        expect {
-          widget.paper_trail.whodunnit(new_name) { raise }
-        }.to raise_error(RuntimeError)
-        expect(PaperTrail.whodunnit).to eq(orig_name)
-      end
+    it "is deprecated, delegates to Request.whodunnit" do
+      allow(::ActiveSupport::Deprecation).to receive(:warn)
+      allow(::PaperTrail::Request).to receive(:with)
+      widget.paper_trail.whodunnit("Alex") {}
+      expect(::ActiveSupport::Deprecation).to have_received(:warn).once
+      expect(::PaperTrail::Request).to have_received(:with).with(whodunnit: "Alex")
     end
   end
 
   describe "#touch_with_version", versioning: true do
     it "creates a version" do
+      allow(::ActiveSupport::Deprecation).to receive(:warn)
       count = widget.versions.size
-      # Travel 1 second because MySQL lacks sub-second resolution
-      Timecop.travel(1) do
-        widget.paper_trail.touch_with_version
-      end
+      widget.paper_trail.touch_with_version
       expect(widget.versions.size).to eq(count + 1)
+      expect(::ActiveSupport::Deprecation).to have_received(:warn).once
     end
 
     it "increments the `:updated_at` timestamp" do
+      allow(::ActiveSupport::Deprecation).to receive(:warn)
       time_was = widget.updated_at
-      # Travel 1 second because MySQL lacks sub-second resolution
-      Timecop.travel(1) do
-        widget.paper_trail.touch_with_version
-      end
+      widget.paper_trail.touch_with_version
       expect(widget.updated_at).to be > time_was
+      expect(::ActiveSupport::Deprecation).to have_received(:warn).once
+    end
+  end
+
+  describe "touch", versioning: true do
+    it "creates a version" do
+      expect { widget.touch }.to change {
+        widget.versions.count
+      }.by(+1)
+    end
+
+    context "request is disabled" do
+      it "does not create a version" do
+        count = widget.versions.count
+        PaperTrail.request(enabled: false) do
+          widget.touch
+        end
+        expect(count).to eq(count)
+      end
+    end
+  end
+
+  describe ".paper_trail.update_columns", versioning: true do
+    it "creates a version record" do
+      widget = Widget.create
+      expect(widget.versions.count).to eq(1)
+      widget.paper_trail.update_columns(name: "Bugle")
+      expect(widget.versions.count).to eq(2)
+      expect(widget.versions.last.event).to(eq("update"))
+      expect(widget.versions.last.changeset[:name]).to eq([nil, "Bugle"])
     end
   end
 
@@ -302,37 +280,6 @@ RSpec.describe Widget, type: :model do
       assert_equal 1, widget.versions.length
       widget.update_attributes(name: "Bugle")
       assert_equal 2, widget.versions.length
-    end
-  end
-
-  describe ".paper_trail.enabled?" do
-    it "returns true" do
-      expect(Widget.paper_trail.enabled?).to eq(true)
-    end
-  end
-
-  describe ".disable" do
-    it "sets the `paper_trail.enabled?` to `false`" do
-      expect(Widget.paper_trail.enabled?).to eq(true)
-      Widget.paper_trail.disable
-      expect(Widget.paper_trail.enabled?).to eq(false)
-    end
-
-    after do
-      Widget.paper_trail.enable
-    end
-  end
-
-  describe ".enable" do
-    it "sets the `paper_trail.enabled?` to `true`" do
-      Widget.paper_trail.disable
-      expect(Widget.paper_trail.enabled?).to eq(false)
-      Widget.paper_trail.enable
-      expect(Widget.paper_trail.enabled?).to eq(true)
-    end
-
-    after do
-      Widget.paper_trail.enable
     end
   end
 end

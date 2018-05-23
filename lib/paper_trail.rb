@@ -1,9 +1,26 @@
+# frozen_string_literal: true
+
+# AR does not require all of AS, but PT does. PT uses core_ext like
+# `String#squish`, so we require `active_support/all`. Instead of eagerly
+# loading all of AS here, we could put specific `require`s in only the various
+# PT files that need them, but this seems easier to troubleshoot, though it may
+# add a few milliseconds to rails boot time. If that becomes a pain point, we
+# can revisit this decision.
+require "active_support/all"
+
+# AR is required for, eg. has_paper_trail.rb, so we could put this `require` in
+# all of those files, but it seems easier to troubleshoot if we just make sure
+# AR is loaded here before loading *any* of PT. See discussion of
+# performance/simplicity tradeoff for activesupport above.
+require "active_record"
+
 require "request_store"
 require "paper_trail/cleaner"
 require "paper_trail/config"
 require "paper_trail/has_paper_trail"
 require "paper_trail/record_history"
 require "paper_trail/reifier"
+require "paper_trail/request"
 require "paper_trail/version_association_concern"
 require "paper_trail/version_concern"
 require "paper_trail/version_number"
@@ -13,131 +30,178 @@ require "paper_trail/serializers/yaml"
 # An ActiveRecord extension that tracks changes to your models, for auditing or
 # versioning.
 module PaperTrail
+  E_RAILS_NOT_LOADED = <<-EOS.squish.freeze
+    PaperTrail has been loaded too early, before rails is loaded. This can
+    happen when another gem defines the ::Rails namespace, then PT is loaded,
+    all before rails is loaded. You may want to reorder your Gemfile, or defer
+    the loading of PT by using `require: false` and a manual require elsewhere.
+  EOS
+  E_TIMESTAMP_FIELD_CONFIG = <<-EOS.squish.freeze
+    PaperTrail.timestamp_field= has been removed, without replacement. It is no
+    longer configurable. The timestamp column in the versions table must now be
+    named created_at.
+  EOS
+
   extend PaperTrail::Cleaner
 
   class << self
     # @api private
     def clear_transaction_id
-      self.transaction_id = nil
+      ::ActiveSupport::Deprecation.warn(
+        "PaperTrail.clear_transaction_id is deprecated, " \
+        "use PaperTrail.request.clear_transaction_id",
+        caller(1)
+      )
+      request.clear_transaction_id
     end
 
-    # Switches PaperTrail on or off.
+    # Switches PaperTrail on or off, for all threads.
     # @api public
     def enabled=(value)
       PaperTrail.config.enabled = value
     end
 
-    # Returns `true` if PaperTrail is on, `false` otherwise.
-    # PaperTrail is enabled by default.
+    # Returns `true` if PaperTrail is on, `false` otherwise. This is the
+    # on/off switch that affects all threads. Enabled by default.
     # @api public
     def enabled?
       !!PaperTrail.config.enabled
     end
 
-    # Sets whether PaperTrail is enabled or disabled for the current request.
-    # @api public
+    # @deprecated
     def enabled_for_controller=(value)
-      paper_trail_store[:request_enabled_for_controller] = value
+      ::ActiveSupport::Deprecation.warn(
+        "PaperTrail.enabled_for_controller= is deprecated, " \
+        "use PaperTrail.request.enabled=",
+        caller(1)
+      )
+      request.enabled = value
     end
 
-    # Returns `true` if PaperTrail is enabled for the request, `false` otherwise.
-    #
-    # See `PaperTrail::Rails::Controller#paper_trail_enabled_for_controller`.
-    # @api public
+    # @deprecated
     def enabled_for_controller?
-      !!paper_trail_store[:request_enabled_for_controller]
+      ::ActiveSupport::Deprecation.warn(
+        "PaperTrail.enabled_for_controller? is deprecated, " \
+        "use PaperTrail.request.enabled?",
+        caller(1)
+      )
+      request.enabled?
     end
 
-    # Sets whether PaperTrail is enabled or disabled for this model in the
-    # current request.
-    # @api public
+    # @deprecated
     def enabled_for_model(model, value)
-      paper_trail_store[:"enabled_for_#{model}"] = value
+      ::ActiveSupport::Deprecation.warn(
+        "PaperTrail.enabled_for_model is deprecated, " \
+        "use PaperTrail.request.enabled_for_model",
+        caller(1)
+      )
+      request.enabled_for_model(model, value)
     end
 
-    # Returns `true` if PaperTrail is enabled for this model in the current
-    # request, `false` otherwise.
-    # @api public
+    # @deprecated
     def enabled_for_model?(model)
-      !!paper_trail_store.fetch(:"enabled_for_#{model}", true)
+      ::ActiveSupport::Deprecation.warn(
+        "PaperTrail.enabled_for_model? is deprecated, " \
+        "use PaperTrail.request.enabled_for_model?",
+        caller(1)
+      )
+      request.enabled_for_model?(model)
     end
 
-    # Returns a `::Gem::Version`, convenient for comparisons. This is
+    # Returns PaperTrail's `::Gem::Version`, convenient for comparisons. This is
     # recommended over `::PaperTrail::VERSION::STRING`.
+    #
+    # Added in 7.0.0
+    #
     # @api public
     def gem_version
       ::Gem::Version.new(VERSION::STRING)
     end
 
-    # Set the field which records when a version was created.
-    # @api public
-    def timestamp_field=(_field_name)
-      raise(
-        "PaperTrail.timestamp_field= has been removed, without replacement. " \
-          "It is no longer configurable. The timestamp field in the versions table " \
-          "must now be named created_at."
-      )
-    end
-
-    # Sets who is responsible for any changes that occur. You would normally use
-    # this in a migration or on the console, when working with models directly.
-    # In a controller it is set automatically to the `current_user`.
-    # @api public
-    def whodunnit=(value)
-      paper_trail_store[:whodunnit] = value
-    end
-
-    # If nothing passed, returns who is reponsible for any changes that occur.
+    # Set variables for the current request, eg. whodunnit.
     #
-    #   PaperTrail.whodunnit = "someone"
-    #   PaperTrail.whodunnit # => "someone"
+    # All request-level variables are now managed here, as of PT 9. Having the
+    # word "request" right there in your application code will remind you that
+    # these variables only affect the current request, not all threads.
     #
-    # If value and block passed, set this value as whodunnit for the duration of the block
+    # Given a block, temporarily sets the given `options`, executes the block,
+    # and returns the value of the block.
     #
-    #   PaperTrail.whodunnit("me") do
-    #     puts PaperTrail.whodunnit # => "me"
-    #   end
+    # Without a block, this currently just returns `PaperTrail::Request`.
+    # However, please do not use `PaperTrail::Request` directly. Currently,
+    # `Request` is a `Module`, but in the future it is quite possible we may
+    # make it a `Class`. If we make such a choice, we will not provide any
+    # warning and will not treat it as a breaking change. You've been warned :)
     #
     # @api public
-    def whodunnit(value = nil)
-      if value
-        raise ArgumentError, "no block given" unless block_given?
-
-        previous_whodunnit = paper_trail_store[:whodunnit]
-        paper_trail_store[:whodunnit] = value
-
-        begin
-          yield
-        ensure
-          paper_trail_store[:whodunnit] = previous_whodunnit
-        end
+    def request(options = nil, &block)
+      if options.nil? && !block_given?
+        Request
       else
-        paper_trail_store[:whodunnit]
+        Request.with(options, &block)
       end
     end
 
-    # Sets any information from the controller that you want PaperTrail to
-    # store.  By default this is set automatically by a before filter.
+    # Set the field which records when a version was created.
     # @api public
+    def timestamp_field=(_field_name)
+      raise(E_TIMESTAMP_FIELD_CONFIG)
+    end
+
+    # @deprecated
+    def whodunnit=(value)
+      ::ActiveSupport::Deprecation.warn(
+        "PaperTrail.whodunnit= is deprecated, use PaperTrail.request.whodunnit=",
+        caller(1)
+      )
+      request.whodunnit = value
+    end
+
+    # @deprecated
+    def whodunnit(value = nil, &block)
+      if value.nil?
+        ::ActiveSupport::Deprecation.warn(
+          "PaperTrail.whodunnit is deprecated, use PaperTrail.request.whodunnit",
+          caller(1)
+        )
+        request.whodunnit
+      elsif block_given?
+        ::ActiveSupport::Deprecation.warn(
+          "Passing a block to PaperTrail.whodunnit is deprecated, " \
+          'use PaperTrail.request(whodunnit: "John") do .. end',
+          caller(1)
+        )
+        request(whodunnit: value, &block)
+      else
+        raise ArgumentError, "Invalid arguments"
+      end
+    end
+
+    # @deprecated
     def controller_info=(value)
-      paper_trail_store[:controller_info] = value
+      ::ActiveSupport::Deprecation.warn(
+        "PaperTrail.controller_info= is deprecated, use PaperTrail.request.controller_info=",
+        caller(1)
+      )
+      request.controller_info = value
     end
 
-    # Returns any information from the controller that you want
-    # PaperTrail to store.
-    #
-    # See `PaperTrail::Rails::Controller#info_for_paper_trail`.
-    # @api public
+    # @deprecated
     def controller_info
-      paper_trail_store[:controller_info]
+      ::ActiveSupport::Deprecation.warn(
+        "PaperTrail.controller_info is deprecated, use PaperTrail.request.controller_info",
+        caller(1)
+      )
+      request.controller_info
     end
 
-    # Getter and Setter for PaperTrail Serializer
+    # Set the PaperTrail serializer. This setting affects all threads.
     # @api public
     def serializer=(value)
       PaperTrail.config.serializer = value
     end
 
+    # Get the PaperTrail serializer used by all threads.
     # @api public
     def serializer
       PaperTrail.config.serializer
@@ -145,27 +209,29 @@ module PaperTrail
 
     # @api public
     def transaction?
-      ::ActiveRecord::Base.connection.open_transactions > 0
+      ::ActiveRecord::Base.connection.open_transactions.positive?
     end
 
-    # @api public
+    # @deprecated
     def transaction_id
-      paper_trail_store[:transaction_id]
+      ::ActiveSupport::Deprecation.warn(
+        "PaperTrail.transaction_id is deprecated without replacement.",
+        caller(1)
+      )
+      request.transaction_id
     end
 
-    # @api public
+    # @deprecated
     def transaction_id=(id)
-      paper_trail_store[:transaction_id] = id
+      ::ActiveSupport::Deprecation.warn(
+        "PaperTrail.transaction_id= is deprecated without replacement.",
+        caller(1)
+      )
+      request.transaction_id = id
     end
 
-    # Thread-safe hash to hold PaperTrail's data. Initializing with needed
-    # default values.
-    # @api private
-    def paper_trail_store
-      RequestStore.store[:paper_trail] ||= { request_enabled_for_controller: true }
-    end
-
-    # Returns PaperTrail's configuration object.
+    # Returns PaperTrail's global configuration object, a singleton. These
+    # settings affect all threads.
     # @api private
     def config
       @config ||= PaperTrail::Config.instance
@@ -185,8 +251,14 @@ ActiveSupport.on_load(:active_record) do
 end
 
 # Require frameworks
-if defined?(::Rails) && ActiveRecord::VERSION::STRING >= "3.2"
-  require "paper_trail/frameworks/rails"
+if defined?(::Rails)
+  # Rails module is sometimes defined by gems like rails-html-sanitizer
+  # so we check for presence of Rails.application.
+  if defined?(::Rails.application)
+    require "paper_trail/frameworks/rails"
+  else
+    ::Kernel.warn(::PaperTrail::E_RAILS_NOT_LOADED)
+  end
 else
   require "paper_trail/frameworks/active_record"
 end

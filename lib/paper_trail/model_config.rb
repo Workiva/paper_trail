@@ -1,35 +1,70 @@
-require "active_support/core_ext"
+# frozen_string_literal: true
 
 module PaperTrail
   # Configures an ActiveRecord model, mostly at application boot time, but also
   # sometimes mid-request, with methods like enable/disable.
   class ModelConfig
+    DPR_DISABLE = <<-STR.squish.freeze
+      MyModel.paper_trail.disable is deprecated, use
+      PaperTrail.request.disable_model(MyModel). This new API makes it clear
+      that only the current request is affected, not all threads. Also, all
+      other request-variables now go through the same `request` method, so this
+      new API is more consistent.
+    STR
+    DPR_ENABLE = <<-STR.squish.freeze
+      MyModel.paper_trail.enable is deprecated, use
+      PaperTrail.request.enable_model(MyModel). This new API makes it clear
+      that only the current request is affected, not all threads. Also, all
+      other request-variables now go through the same `request` method, so this
+      new API is more consistent.
+    STR
+    DPR_ENABLED = <<-STR.squish.freeze
+      MyModel.paper_trail.enabled? is deprecated, use
+      PaperTrail.request.enabled_for_model?(MyModel). This new API makes it clear
+      that this is a setting specific to the current request, not all threads.
+      Also, all other request-variables now go through the same `request`
+      method, so this new API is more consistent.
+    STR
     E_CANNOT_RECORD_AFTER_DESTROY = <<-STR.strip_heredoc.freeze
       paper_trail.on_destroy(:after) is incompatible with ActiveRecord's
-      belongs_to_required_by_default and has no effect. Please use :before
+      belongs_to_required_by_default. Use on_destroy(:before)
       or disable belongs_to_required_by_default.
+    STR
+    E_HPT_ABSTRACT_CLASS = <<~STR.squish.freeze
+      An application model (%s) has been configured to use PaperTrail (via
+      `has_paper_trail`), but the version model it has been told to use (%s) is
+      an `abstract_class`. This could happen when an advanced feature called
+      Custom Version Classes (http://bit.ly/2G4ch0G) is misconfigured. When all
+      version classes are custom, PaperTrail::Version is configured to be an
+      `abstract_class`. This is fine, but all application models must be
+      configured to use concrete (not abstract) version models.
     STR
 
     def initialize(model_class)
       @model_class = model_class
     end
 
-    # Switches PaperTrail off for this class.
+    # @deprecated
     def disable
-      ::PaperTrail.enabled_for_model(@model_class, false)
+      ::ActiveSupport::Deprecation.warn(DPR_DISABLE, caller(1))
+      ::PaperTrail.request.disable_model(@model_class)
     end
 
-    # Switches PaperTrail on for this class.
+    # @deprecated
     def enable
-      ::PaperTrail.enabled_for_model(@model_class, true)
+      ::ActiveSupport::Deprecation.warn(DPR_ENABLE, caller(1))
+      ::PaperTrail.request.enable_model(@model_class)
     end
 
+    # @deprecated
     def enabled?
-      return false unless @model_class.include?(::PaperTrail::Model::InstanceMethods)
-      ::PaperTrail.enabled_for_model?(@model_class)
+      ::ActiveSupport::Deprecation.warn(DPR_ENABLED, caller(1))
+      ::PaperTrail.request.enabled_for_model?(@model_class)
     end
 
     # Adds a callback that records a version after a "create" event.
+    #
+    # @api public
     def on_create
       @model_class.after_create { |r|
         r.paper_trail.record_create if r.paper_trail.save_version?
@@ -39,18 +74,23 @@ module PaperTrail
     end
 
     # Adds a callback that records a version before or after a "destroy" event.
+    #
+    # @api public
     def on_destroy(recording_order = "before")
       unless %w[after before].include?(recording_order.to_s)
         raise ArgumentError, 'recording order can only be "after" or "before"'
       end
 
       if recording_order.to_s == "after" && cannot_record_after_destroy?
-        ::ActiveSupport::Deprecation.warn(E_CANNOT_RECORD_AFTER_DESTROY)
+        raise E_CANNOT_RECORD_AFTER_DESTROY
       end
 
       @model_class.send(
         "#{recording_order}_destroy",
-        ->(r) { r.paper_trail.record_destroy if r.paper_trail.save_version? }
+        lambda do |r|
+          return unless r.paper_trail.save_version?
+          r.paper_trail.record_destroy(recording_order)
+        end
       )
 
       return if @model_class.paper_trail_options[:on].include?(:destroy)
@@ -58,12 +98,20 @@ module PaperTrail
     end
 
     # Adds a callback that records a version after an "update" event.
+    #
+    # @api public
     def on_update
-      @model_class.before_save(on: :update) { |r|
+      @model_class.before_save { |r|
         r.paper_trail.reset_timestamp_attrs_for_update_if_needed
       }
       @model_class.after_update { |r|
-        r.paper_trail.record_update(nil) if r.paper_trail.save_version?
+        if r.paper_trail.save_version?
+          r.paper_trail.record_update(
+            force: false,
+            in_after_callback: true,
+            is_touch: false
+          )
+        end
       }
       @model_class.after_update { |r|
         r.paper_trail.clear_version_instance
@@ -72,20 +120,25 @@ module PaperTrail
       @model_class.paper_trail_options[:on] << :update
     end
 
+    # Adds a callback that records a version after a "touch" event.
+    # @api public
+    def on_touch
+      @model_class.after_touch { |r|
+        r.paper_trail.record_update(
+          force: true,
+          in_after_callback: true,
+          is_touch: true
+        )
+      }
+    end
+
     # Set up `@model_class` for PaperTrail. Installs callbacks, associations,
     # "class attributes", instance methods, and more.
     # @api private
     def setup(options = {})
-      options[:on] ||= %i[create update destroy]
+      options[:on] ||= %i[create update destroy touch]
       options[:on] = Array(options[:on]) # Support single symbol
       @model_class.send :include, ::PaperTrail::Model::InstanceMethods
-      if ::ActiveRecord::VERSION::STRING < "4.2"
-        ::ActiveSupport::Deprecation.warn(
-          "Your version of ActiveRecord (< 4.2) has reached EOL. PaperTrail " \
-          "will soon drop support. Please upgrade ActiveRecord ASAP."
-        )
-        @model_class.send :extend, AttributeSerializers::LegacyActiveRecordShim
-      end
       setup_options(options)
       setup_associations(options)
       setup_transaction_callbacks
@@ -101,6 +154,14 @@ module PaperTrail
 
     def active_record_gem_version
       Gem::Version.new(ActiveRecord::VERSION::STRING)
+    end
+
+    # Raises an error if the provided class is an `abstract_class`.
+    # @api private
+    def assert_concrete_activerecord_class(class_name)
+      if class_name.constantize.abstract_class?
+        raise format(E_HPT_ABSTRACT_CLASS, @model_class, class_name)
+      end
     end
 
     def cannot_record_after_destroy?
@@ -127,6 +188,8 @@ module PaperTrail
       @model_class.versions_association_name = options[:versions] || :versions
 
       @model_class.send :attr_accessor, :paper_trail_event
+
+      assert_concrete_activerecord_class(@model_class.version_class_name)
 
       @model_class.has_many(
         @model_class.versions_association_name,
@@ -182,8 +245,8 @@ module PaperTrail
 
     # Reset the transaction id when the transaction is closed.
     def setup_transaction_callbacks
-      @model_class.after_commit { PaperTrail.clear_transaction_id }
-      @model_class.after_rollback { PaperTrail.clear_transaction_id }
+      @model_class.after_commit { PaperTrail.request.clear_transaction_id }
+      @model_class.after_rollback { PaperTrail.request.clear_transaction_id }
       @model_class.after_rollback { paper_trail.clear_rolled_back_versions }
     end
 

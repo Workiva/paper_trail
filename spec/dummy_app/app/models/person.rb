@@ -1,7 +1,26 @@
+# frozen_string_literal: true
+
 class Person < ActiveRecord::Base
   has_many :authorships, foreign_key: :author_id, dependent: :destroy
   has_many :books, through: :authorships
-  belongs_to :mentor, class_name: "Person", foreign_key: :mentor_id
+
+  has_many :pets, foreign_key: :owner_id, dependent: :destroy
+  has_many :animals, through: :pets
+  has_many :dogs, class_name: "Dog", through: :pets, source: :animal
+  has_many :cats, class_name: "Cat", through: :pets, source: :animal
+
+  has_one :car, foreign_key: :owner_id
+  has_one :bicycle, foreign_key: :owner_id
+
+  has_one :thing
+  has_one :thing_2, class_name: "Thing"
+
+  if ActiveRecord.gem_version >= Gem::Version.new("5.0")
+    belongs_to :mentor, class_name: "Person", foreign_key: :mentor_id, optional: true
+  else
+    belongs_to :mentor, class_name: "Person", foreign_key: :mentor_id
+  end
+
   has_paper_trail
 
   # Convert strings to TimeZone objects when assigned

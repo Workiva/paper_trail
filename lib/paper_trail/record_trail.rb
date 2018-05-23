@@ -1,8 +1,44 @@
+# frozen_string_literal: true
+
 module PaperTrail
   # Represents the "paper trail" for a single record.
   class RecordTrail
-    RAILS_GTE_5_1 = ::ActiveRecord.respond_to?(:gem_version) &&
-      ::ActiveRecord.gem_version >= ::Gem::Version.new("5.1.0.beta1")
+    DPR_TOUCH_WITH_VERSION = <<-STR.squish.freeze
+      my_model.paper_trail.touch_with_version is deprecated, please use
+      my_model.paper_trail.save_with_version, which is slightly different. It's
+      a save, not a touch, so make sure you understand the difference by reading
+      the ActiveRecord documentation for both.
+    STR
+    DPR_WHODUNNIT = <<-STR.squish.freeze
+      my_model_instance.paper_trail.whodunnit('John') is deprecated,
+      please use PaperTrail.request(whodunnit: 'John')
+    STR
+    DPR_WITHOUT_VERSIONING = <<-STR
+      my_model_instance.paper_trail.without_versioning is deprecated, without
+      an exact replacement. To disable versioning for a particular model,
+
+      ```
+      PaperTrail.request.disable_model(Banana)
+      # changes to Banana model do not create versions,
+      # but eg. changes to Kiwi model do.
+      PaperTrail.request.enable_model(Banana)
+      ```
+
+      Or, you may want to disable all models,
+
+      ```
+      PaperTrail.request.enabled = false
+      # no versions created
+      PaperTrail.request.enabled = true
+
+      # or, with a block,
+      PaperTrail.request(enabled: false) do
+        # no versions created
+      end
+      ```
+    STR
+
+    RAILS_GTE_5_1 = ::ActiveRecord.gem_version >= ::Gem::Version.new("5.1.0.beta1")
 
     def initialize(record)
       @record = record
@@ -20,8 +56,9 @@ module PaperTrail
     # > something) from running. By also stubbing out persisted? we can
     # > actually prevent those. A more stable option might be to use suppress
     # > instead, similar to the other branch in reify_has_one.
-    # > -Sean Griffin (https://github.com/airblade/paper_trail/pull/899)
+    # > -Sean Griffin (https://github.com/paper-trail-gem/paper_trail/pull/899)
     #
+    # @api private
     def appear_as_new_record
       @record.instance_eval {
         alias :old_new_record? :new_record?
@@ -36,10 +73,10 @@ module PaperTrail
       }
     end
 
-    def attributes_before_change
+    def attributes_before_change(is_touch)
       Hash[@record.attributes.map do |k, v|
         if @record.class.column_names.include?(k)
-          [k, attribute_in_previous_version(k)]
+          [k, attribute_in_previous_version(k, is_touch)]
         else
           [k, v]
         end
@@ -97,12 +134,24 @@ module PaperTrail
       notable_changes.to_hash
     end
 
+    # Is PT enabled for this particular record?
+    # @api private
     def enabled?
-      PaperTrail.enabled? && PaperTrail.enabled_for_controller? && enabled_for_model?
+      PaperTrail.enabled? &&
+        PaperTrail.request.enabled? &&
+        PaperTrail.request.enabled_for_model?(@record.class)
     end
 
+    # Not sure why, but this method was mentioned in the README in the past,
+    # so we need to deprecate it properly.
+    # @deprecated
     def enabled_for_model?
-      @record.class.paper_trail.enabled?
+      ::ActiveSupport::Deprecation.warn(
+        "MyModel#paper_trail.enabled_for_model? is deprecated, use " \
+        "PaperTrail.request.enabled_for_model?(MyModel) instead.",
+        caller(1)
+      )
+      PaperTrail.request.enabled_for_model?(@record.class)
     end
 
     # An attributed is "ignored" if it is listed in the `:ignore` option
@@ -120,6 +169,8 @@ module PaperTrail
     end
 
     # Updates `data` from the model's `meta` option and from `controller_info`.
+    # Metadata is always recorded; that means all three events (create, update,
+    # destroy) and `update_columns`.
     # @api private
     def merge_metadata_into(data)
       merge_metadata_from_model_into(data)
@@ -129,7 +180,7 @@ module PaperTrail
     # Updates `data` from `controller_info`.
     # @api private
     def merge_metadata_from_controller_into(data)
-      data.merge(PaperTrail.controller_info || {})
+      data.merge(PaperTrail.request.controller_info || {})
     end
 
     # Updates `data` from the model's `meta` option.
@@ -153,7 +204,7 @@ module PaperTrail
         if event != "create" &&
             @record.has_attribute?(value) &&
             attribute_changed_in_latest_version?(value)
-          attribute_in_previous_version(value)
+          attribute_in_previous_version(value, false)
         else
           @record.send(value)
         end
@@ -168,7 +219,7 @@ module PaperTrail
     def next_version
       subsequent_version = source_version.next
       subsequent_version ? subsequent_version.reify : @record.class.find(@record.id)
-    rescue # TODO: Rescue something more specific
+    rescue StandardError # TODO: Rescue something more specific
       nil
     end
 
@@ -187,18 +238,25 @@ module PaperTrail
 
     # Returns hash of attributes (with appropriate attributes serialized),
     # omitting attributes to be skipped.
-    def object_attrs_for_paper_trail
-      attrs = attributes_before_change.except(*@record.paper_trail_options[:skip])
+    #
+    # @api private
+    def object_attrs_for_paper_trail(is_touch)
+      attrs = attributes_before_change(is_touch).
+        except(*@record.paper_trail_options[:skip])
       AttributeSerializers::ObjectAttribute.new(@record.class).serialize(attrs)
       attrs
     end
 
     # Returns who put `@record` into its current state.
+    #
+    # @api public
     def originator
       (source_version || versions.last).try(:whodunnit)
     end
 
     # Returns the object (not a Version) as it was most recently.
+    #
+    # @api public
     def previous_version
       (source_version ? source_version.previous : versions.last).try(:reify)
     end
@@ -219,19 +277,23 @@ module PaperTrail
     def data_for_create
       data = {
         event: @record.paper_trail_event || "create",
-        whodunnit: PaperTrail.whodunnit
+        whodunnit: PaperTrail.request.whodunnit
       }
       if @record.respond_to?(:updated_at)
         data[:created_at] = @record.updated_at
       end
       if record_object_changes? && changed_notably?
-        data[:object_changes] = recordable_object_changes
+        data[:object_changes] = recordable_object_changes(changes)
       end
       add_transaction_id_to(data)
       merge_metadata_into(data)
     end
 
-    def record_destroy
+    # `recording_order` is "after" or "before". See ModelConfig#on_destroy.
+    #
+    # @api private
+    def record_destroy(recording_order)
+      @in_after_callback = recording_order == "after"
       if enabled? && !@record.new_record?
         version = @record.class.paper_trail.version_class.create(data_for_destroy)
         if version.errors.any?
@@ -243,6 +305,8 @@ module PaperTrail
           save_associations(version)
         end
       end
+    ensure
+      @in_after_callback = false
     end
 
     # Returns data for record destroy
@@ -252,8 +316,8 @@ module PaperTrail
         item_id: @record.id,
         item_type: @record.class.base_class.name,
         event: @record.paper_trail_event || "destroy",
-        object: recordable_object,
-        whodunnit: PaperTrail.whodunnit
+        object: recordable_object(false),
+        whodunnit: PaperTrail.request.whodunnit
       }
       add_transaction_id_to(data)
       merge_metadata_into(data)
@@ -267,11 +331,11 @@ module PaperTrail
         @record.class.paper_trail.version_class.column_names.include?("object_changes")
     end
 
-    def record_update(force)
-      @in_after_callback = true
+    def record_update(force:, in_after_callback:, is_touch:)
+      @in_after_callback = in_after_callback
       if enabled? && (force || changed_notably?)
         versions_assoc = @record.send(@record.class.versions_association_name)
-        version = versions_assoc.create(data_for_update)
+        version = versions_assoc.create(data_for_update(is_touch))
         if version.errors.any?
           log_version_errors(version, :update)
         else
@@ -283,19 +347,49 @@ module PaperTrail
       @in_after_callback = false
     end
 
-    # Returns data for record update
+    # Used during `record_update`, returns a hash of data suitable for an AR
+    # `create`. That is, all the attributes of the nascent `Version` record.
+    #
     # @api private
-    def data_for_update
+    def data_for_update(is_touch)
       data = {
         event: @record.paper_trail_event || "update",
-        object: recordable_object,
-        whodunnit: PaperTrail.whodunnit
+        object: recordable_object(is_touch),
+        whodunnit: PaperTrail.request.whodunnit
       }
       if @record.respond_to?(:updated_at)
         data[:created_at] = @record.updated_at
       end
       if record_object_changes?
-        data[:object_changes] = recordable_object_changes
+        data[:object_changes] = recordable_object_changes(changes)
+      end
+      add_transaction_id_to(data)
+      merge_metadata_into(data)
+    end
+
+    # @api private
+    def record_update_columns(changes)
+      return unless enabled?
+      versions_assoc = @record.send(@record.class.versions_association_name)
+      version = versions_assoc.create(data_for_update_columns(changes))
+      if version.errors.any?
+        log_version_errors(version, :update)
+      else
+        update_transaction_id(version)
+        save_associations(version)
+      end
+    end
+
+    # Returns data for record_update_columns
+    # @api private
+    def data_for_update_columns(changes)
+      data = {
+        event: @record.paper_trail_event || "update",
+        object: recordable_object(false),
+        whodunnit: PaperTrail.request.whodunnit
+      }
+      if record_object_changes?
+        data[:object_changes] = recordable_object_changes(changes)
       end
       add_transaction_id_to(data)
       merge_metadata_into(data)
@@ -306,12 +400,13 @@ module PaperTrail
     # column, then a hash can be used in the assignment, otherwise the column
     # is a `text` column, and we must perform the serialization here, using
     # `PaperTrail.serializer`.
+    #
     # @api private
-    def recordable_object
+    def recordable_object(is_touch)
       if @record.class.paper_trail.version_class.object_col_is_json?
-        object_attrs_for_paper_trail
+        object_attrs_for_paper_trail(is_touch)
       else
-        PaperTrail.serializer.dump(object_attrs_for_paper_trail)
+        PaperTrail.serializer.dump(object_attrs_for_paper_trail(is_touch))
       end
     end
 
@@ -320,8 +415,9 @@ module PaperTrail
     # a postgres `json` column, then a hash can be used in the assignment,
     # otherwise the column is a `text` column, and we must perform the
     # serialization here, using `PaperTrail.serializer`.
+    #
     # @api private
-    def recordable_object_changes
+    def recordable_object_changes(changes)
       if @record.class.paper_trail.version_class.object_changes_col_is_json?
         changes
       else
@@ -334,13 +430,7 @@ module PaperTrail
     def reset_timestamp_attrs_for_update_if_needed
       return if live?
       @record.send(:timestamp_attributes_for_update_in_model).each do |column|
-        # ActiveRecord 4.2 deprecated `reset_column!` in favor of
-        # `restore_column!`.
-        if @record.respond_to?("restore_#{column}!")
-          @record.send("restore_#{column}!")
-        else
-          @record.send("reset_#{column}!")
-        end
+        @record.send("restore_#{column}!")
       end
     end
 
@@ -389,17 +479,25 @@ module PaperTrail
       version
     end
 
-    # Mimics the `touch` method from `ActiveRecord::Persistence`, but also
-    # creates a version. A version is created regardless of options such as
-    # `:on`, `:if`, or `:unless`.
+    # Mimics the `touch` method from `ActiveRecord::Persistence` (without
+    # actually calling `touch`), but also creates a version.
     #
-    # TODO: look into leveraging the `after_touch` callback from
-    # `ActiveRecord` to allow the regular `touch` method to generate a version
-    # as normal. May make sense to switch the `record_update` method to
-    # leverage an `after_update` callback anyways (likely for v4.0.0)
+    # A version is created regardless of options such as `:on`, `:if`, or
+    # `:unless`.
+    #
+    # This is an "update" event. That is, we record the same data we would in
+    # the case of a normal AR `update`.
+    #
+    # Some advanced PT users disable all callbacks (eg. `has_paper_trail(on:
+    # [])`) and use only this method, giving them complete control over when
+    # version records are inserted. It's unclear under which specific
+    # circumstances this technique should be adopted.
+    #
+    # @deprecated
     def touch_with_version(name = nil)
+      ::ActiveSupport::Deprecation.warn(DPR_TOUCH_WITH_VERSION, caller(1))
       unless @record.persisted?
-        raise ActiveRecordError, "can not touch on a new record object"
+        raise ::ActiveRecord::ActiveRecordError, "can not touch on a new record object"
       end
       attributes = @record.send :timestamp_attributes_for_update_in_model
       attributes << name if name
@@ -407,8 +505,52 @@ module PaperTrail
       attributes.each { |column|
         @record.send(:write_attribute, column, current_time)
       }
-      record_update(true) unless will_record_after_update?
-      @record.save!(validate: false)
+      ::PaperTrail.request(enabled: false) do
+        @record.save!(validate: false)
+      end
+      record_update(force: true, in_after_callback: false, is_touch: false)
+    end
+
+    # Save, and create a version record regardless of options such as `:on`,
+    # `:if`, or `:unless`.
+    #
+    # Arguments are passed to `save`.
+    #
+    # This is an "update" event. That is, we record the same data we would in
+    # the case of a normal AR `update`.
+    #
+    # In older versions of PaperTrail, a method named `touch_with_version` was
+    # used for this purpose. `save_with_version` is not exactly the same.
+    # First, the arguments are different. It passes all arguments to `save`.
+    # Second, it doesn't set any timestamp attributes prior to the `save` the
+    # way `touch_with_version` did.
+    def save_with_version(*args)
+      ::PaperTrail.request(enabled: false) do
+        @record.save(*args)
+      end
+      record_update(force: true, in_after_callback: false, is_touch: false)
+    end
+
+    # Like the `update_column` method from `ActiveRecord::Persistence`, but also
+    # creates a version to record those changes.
+    # @api public
+    def update_column(name, value)
+      update_columns(name => value)
+    end
+
+    # Like the `update_columns` method from `ActiveRecord::Persistence`, but also
+    # creates a version to record those changes.
+    # @api public
+    def update_columns(attributes)
+      # `@record.update_columns` skips dirty tracking, so we can't just use `@record.changes` or
+      # @record.saved_changes` from `ActiveModel::Dirty`. We need to build our own hash with the
+      # changes that will be made directly to the database.
+      changes = {}
+      attributes.each do |k, v|
+        changes[k] = [@record[k], v]
+      end
+      @record.update_columns(attributes)
+      record_update_columns(changes)
     end
 
     # Returns the object (not a Version) as it was at the given timestamp.
@@ -427,9 +569,11 @@ module PaperTrail
     end
 
     # Executes the given method or block without creating a new version.
+    # @deprecated
     def without_versioning(method = nil)
-      paper_trail_was_enabled = enabled_for_model?
-      @record.class.paper_trail.disable
+      ::ActiveSupport::Deprecation.warn(DPR_WITHOUT_VERSIONING, caller(1))
+      paper_trail_was_enabled = PaperTrail.request.enabled_for_model?(@record.class)
+      PaperTrail.request.disable_model(@record.class)
       if method
         if respond_to?(method)
           public_send(method)
@@ -440,27 +584,28 @@ module PaperTrail
         yield @record
       end
     ensure
-      @record.class.paper_trail.enable if paper_trail_was_enabled
+      PaperTrail.request.enable_model(@record.class) if paper_trail_was_enabled
     end
 
-    # Temporarily overwrites the value of whodunnit and then executes the
-    # provided block.
+    # @deprecated
     def whodunnit(value)
       raise ArgumentError, "expected to receive a block" unless block_given?
-      current_whodunnit = PaperTrail.whodunnit
-      PaperTrail.whodunnit = value
-      yield @record
-    ensure
-      PaperTrail.whodunnit = current_whodunnit
+      ::ActiveSupport::Deprecation.warn(DPR_WHODUNNIT, caller(1))
+      ::PaperTrail.request(whodunnit: value) do
+        yield @record
+      end
     end
 
     private
 
     def add_transaction_id_to(data)
       return unless @record.class.paper_trail.version_class.column_names.include?("transaction_id")
-      data[:transaction_id] = PaperTrail.transaction_id
+      data[:transaction_id] = PaperTrail.request.transaction_id
     end
 
+    # Rails 5.1 changed the API of `ActiveRecord::Dirty`. See
+    # https://github.com/paper-trail-gem/paper_trail/pull/899
+    #
     # @api private
     def attribute_changed_in_latest_version?(attr_name)
       if @in_after_callback && RAILS_GTE_5_1
@@ -470,17 +615,31 @@ module PaperTrail
       end
     end
 
+    # Rails 5.1 changed the API of `ActiveRecord::Dirty`. See
+    # https://github.com/paper-trail-gem/paper_trail/pull/899
+    #
+    # Event can be any of the three (create, update, destroy).
+    #
     # @api private
-    def attribute_in_previous_version(attr_name)
-      if @in_after_callback && RAILS_GTE_5_1
-        @record.attribute_before_last_save(attr_name.to_s)
+    def attribute_in_previous_version(attr_name, is_touch)
+      if RAILS_GTE_5_1
+        if @in_after_callback && !is_touch
+          # For most events, we want the original value of the attribute, before
+          # the last save.
+          @record.attribute_before_last_save(attr_name.to_s)
+        else
+          # We are either performing a `record_destroy` or a
+          # `record_update(is_touch: true)`.
+          @record.attribute_in_database(attr_name.to_s)
+        end
       else
-        # TODO: after dropping support for rails 4.0, remove send, because
-        # attribute_was is no longer private.
-        @record.send(:attribute_was, attr_name.to_s)
+        @record.attribute_was(attr_name.to_s)
       end
     end
 
+    # Rails 5.1 changed the API of `ActiveRecord::Dirty`. See
+    # https://github.com/paper-trail-gem/paper_trail/pull/899
+    #
     # @api private
     def changed_in_latest_version
       if @in_after_callback && RAILS_GTE_5_1
@@ -490,6 +649,9 @@ module PaperTrail
       end
     end
 
+    # Rails 5.1 changed the API of `ActiveRecord::Dirty`. See
+    # https://github.com/paper-trail-gem/paper_trail/pull/899
+    #
     # @api private
     def changes_in_latest_version
       if @in_after_callback && RAILS_GTE_5_1
@@ -500,6 +662,7 @@ module PaperTrail
     end
 
     # Given a HABTM association, returns an array of ids.
+    #
     # @api private
     def habtm_assoc_ids(habtm_assoc)
       current = @record.send(habtm_assoc.name).to_a.map(&:id) # TODO: `pluck` would use less memory
@@ -509,8 +672,8 @@ module PaperTrail
     end
 
     def log_version_errors(version, action)
-      version.logger && version.logger.warn(
-        "Unable to create version for #{action} of #{@record.class.name}" +
+      version.logger&.warn(
+        "Unable to create version for #{action} of #{@record.class.name}" \
           "##{@record.id}: " + version.errors.full_messages.join(", ")
       )
     end
@@ -525,10 +688,10 @@ module PaperTrail
 
       if assoc.options[:polymorphic]
         associated_record = @record.send(assoc.name) if @record.send(assoc.foreign_type)
-        if associated_record && associated_record.class.paper_trail.enabled?
+        if associated_record && PaperTrail.request.enabled_for_model?(associated_record.class)
           assoc_version_args[:foreign_key_id] = associated_record.id
         end
-      elsif assoc.klass.paper_trail.enabled?
+      elsif PaperTrail.request.enabled_for_model?(assoc.klass)
         assoc_version_args[:foreign_key_id] = @record.send(assoc.foreign_key)
       end
 
@@ -541,20 +704,13 @@ module PaperTrail
     # @api private
     def save_habtm_association?(assoc)
       @record.class.paper_trail_save_join_tables.include?(assoc.name) ||
-        assoc.klass.paper_trail.enabled?
-    end
-
-    # Returns true if `save` will cause `record_update`
-    # to be called via the `after_update` callback.
-    def will_record_after_update?
-      on = @record.paper_trail_options[:on]
-      on.nil? || on.include?(:update)
+        PaperTrail.request.enabled_for_model?(assoc.klass)
     end
 
     def update_transaction_id(version)
       return unless @record.class.paper_trail.version_class.column_names.include?("transaction_id")
-      if PaperTrail.transaction? && PaperTrail.transaction_id.nil?
-        PaperTrail.transaction_id = version.id
+      if PaperTrail.transaction? && PaperTrail.request.transaction_id.nil?
+        PaperTrail.request.transaction_id = version.id
         version.transaction_id = version.id
         version.save
       end

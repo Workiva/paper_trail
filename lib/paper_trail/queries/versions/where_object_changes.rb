@@ -1,7 +1,9 @@
+# frozen_string_literal: true
+
 module PaperTrail
   module Queries
     module Versions
-      # For public API documentation, see `where_object` in
+      # For public API documentation, see `where_object_changes` in
       # `paper_trail/version_concern.rb`.
       # @api private
       class WhereObjectChanges

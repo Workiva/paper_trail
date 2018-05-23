@@ -13,11 +13,16 @@ On github, we appreciate bug reports, feature suggestions, and pull requests.
 
 Please use our [bug report template][1].
 
+## Reporting Security Vulnerabilities
+
+Please email jared@jaredbeck.com, batkinz@gmail.com
+
+We will respond as soon as we can. Thank you for responsibly disclosing
+security vulnerabilities.
+
 ## Development
 
-Install gems with `bundle exec appraisal install`. This requires ruby >= 2.0.
-(It is still possible to run the `ar-4.2` gemfile locally on ruby 1.9.3, but
-not the `ar-5.0` gemfile.)
+Install gems with `bundle exec appraisal install`.
 
 Testing is a little awkward because the test suite:
 
@@ -28,6 +33,8 @@ Testing is a little awkward because the test suite:
 ### Test sqlite, AR 4.2
 
 ```
+rm spec/dummy_app/db/*.sqlite3
+
 # Create the appropriate database config. file
 rm spec/dummy_app/config/database.yml
 DB=sqlite bundle exec rake prepare
@@ -53,6 +60,8 @@ DB=sqlite bundle exec appraisal ar-4.2 rspec spec/paper_trail/serializers/json_s
 ### Test sqlite, AR 5
 
 ```
+rm spec/dummy_app/db/*.sqlite3
+
 # Create the appropriate database config. file
 rm spec/dummy_app/config/database.yml
 DB=sqlite bundle exec rake prepare
@@ -61,7 +70,7 @@ DB=sqlite bundle exec rake prepare
 # We can't use `appraisal` inside the dummy app, so we must set `BUNDLE_GEMFILE`.
 # See spec/dummy_app/config/boot.rb for a complete explanation.
 cd spec/dummy_app
-export BUNDLE_GEMFILE=../../gemfiles/ar_5.0.gemfile
+export BUNDLE_GEMFILE=../../gemfiles/ar_5.2.gemfile
 RAILS_ENV=test bundle exec rake db:environment:set db:setup
 RAILS_ENV=foo bundle exec rake db:environment:set db:setup
 RAILS_ENV=bar bundle exec rake db:environment:set db:setup
@@ -69,7 +78,7 @@ unset BUNDLE_GEMFILE
 cd ../..
 
 # Run tests
-DB=sqlite bundle exec appraisal ar-5.0 rake
+DB=sqlite bundle exec appraisal ar-5.2 rake
 ```
 
 ### Test mysql, AR 5
@@ -83,15 +92,15 @@ DB=mysql bundle exec rake prepare
 # We can't use `appraisal` inside the dummy app, so we must set `BUNDLE_GEMFILE`.
 # See spec/dummy_app/config/boot.rb for a complete explanation.
 cd spec/dummy_app
-export BUNDLE_GEMFILE=../../gemfiles/ar_5.0.gemfile
-RAILS_ENV=test bundle exec rake db:environment:set db:setup
-RAILS_ENV=foo bundle exec rake db:environment:set db:setup
-RAILS_ENV=bar bundle exec rake db:environment:set db:setup
+export BUNDLE_GEMFILE=../../gemfiles/ar_5.2.gemfile
+RAILS_ENV=test bundle exec rake db:setup db:environment:set
+RAILS_ENV=foo bundle exec rake db:setup db:environment:set
+RAILS_ENV=bar bundle exec rake db:setup db:environment:set
 unset BUNDLE_GEMFILE
 cd ../..
 
 # Run tests
-DB=mysql bundle exec appraisal ar-5.0 rake
+DB=mysql bundle exec appraisal ar-5.2 rake
 ```
 
 ### Test postgres, AR 5
@@ -106,16 +115,16 @@ DB=postgres bundle exec rake prepare
 # We can't use `appraisal` inside the dummy app, so we must set `BUNDLE_GEMFILE`.
 # See spec/dummy_app/config/boot.rb for a complete explanation.
 cd spec/dummy_app
-export BUNDLE_GEMFILE=../../gemfiles/ar_5.0.gemfile
-DB=postgres RAILS_ENV=test bundle exec rake db:drop db:create db:migrate
-DB=postgres RAILS_ENV=foo bundle exec rake db:drop db:create db:migrate
-DB=postgres RAILS_ENV=bar bundle exec rake db:drop db:create db:migrate
+export BUNDLE_GEMFILE=../../gemfiles/ar_5.2.gemfile
+DB=postgres RAILS_ENV=test bundle exec rake db:environment:set db:drop db:create db:migrate
+DB=postgres RAILS_ENV=foo bundle exec rake db:environment:set db:drop db:create db:migrate
+DB=postgres RAILS_ENV=bar bundle exec rake db:environment:set db:drop db:create db:migrate
 unset BUNDLE_GEMFILE
 cd ../..
 
 # Run tests
 DB=postgres bundle exec rake
-DB=postgres bundle exec appraisal ar-5.0 rake
+DB=postgres bundle exec appraisal ar-5.2 rake
 ```
 
 ## Editing the migration
@@ -134,10 +143,18 @@ cd ../..
 
 Don't forget to commit changes to `schema.rb`.
 
+## Documentation
+
+### Generate the Table of Contents
+
+```
+yarn global add markdown-toc
+markdown-toc -i --maxdepth 3 --bullets='-' README.md
+```
+
 ## Releases
 
 1. Set the version in lib/paper_trail/version_number.rb
-  - Set PRE to nil unless it's a pre-release (beta, rc, etc.)
 1. In the changelog,
   - Replace "Unreleased" with the date in iso-8601 format
   - Add a new "Unreleased" section
@@ -150,4 +167,4 @@ Don't forget to commit changes to `schema.rb`.
 1. gem build paper_trail.gemspec
 1. gem push paper_trail-5.0.0.gem
 
-[1]: https://github.com/airblade/paper_trail/blob/master/doc/bug_report_template.rb
+[1]: https://github.com/paper-trail-gem/paper_trail/blob/master/doc/bug_report_template.rb
