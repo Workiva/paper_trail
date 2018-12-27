@@ -1,6 +1,19 @@
+---
+name: Bug Report
+about: >
+  You will be asked to provide a script that reproduces the bug, based on our
+  template.
+
+---
+
+Due to limited volunteers, we cannot answer *usage* questions. Please ask such
+questions on [StackOverflow](https://stackoverflow.com/tags/paper-trail-gem).
+
+Bug reports must use the following template:
+
+```ruby
 # frozen_string_literal: true
 
-# Use this template to report PaperTrail bugs.
 # Please include only the minimum code necessary to reproduce your issue.
 require "bundler/inline"
 
@@ -10,7 +23,7 @@ gemfile(true) do
   source "https://rubygems.org"
   gem "activerecord", "5.1.4"
   gem "minitest", "5.10.3"
-  gem "paper_trail", "8.0.0", require: false
+  gem "paper_trail", "9.1.0", require: false
   gem "sqlite3"
 end
 
@@ -47,7 +60,7 @@ class User < ActiveRecord::Base
   has_paper_trail
 end
 
-# STEP FIVE: Please write a test that demonstrates your issue.
+# STEP FIVE: Write a test that demonstrates your issue by failing.
 class BugTest < ActiveSupport::TestCase
   def test_1
     assert_difference(-> { PaperTrail::Version.count }, +1) {
@@ -57,3 +70,4 @@ class BugTest < ActiveSupport::TestCase
 end
 
 # STEP SIX: Run this script using `ruby my_bug_report.rb`
+```
