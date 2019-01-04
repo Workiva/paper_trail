@@ -397,8 +397,8 @@ module PaperTrail
       #
       # Hook allows recorded model an opportunity to update the changeset
       # before persisting but after any generic updates in the object_changes_adapter
-      if @record.paper_trail_config[:before_changeset_save]
-        changes = @record.send(@record.paper_trail_config[:before_changeset_save], changes)
+      if @record.paper_trail_options[:before_changeset_save]
+        changes = @record.send(@record.paper_trail_options[:before_changeset_save], changes)
       end
 
       if @record.class.paper_trail.version_class.object_changes_col_is_json?
