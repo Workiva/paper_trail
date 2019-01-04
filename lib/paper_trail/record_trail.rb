@@ -393,7 +393,7 @@ module PaperTrail
       end
 
       #
-      # Note(Nick)
+      # Note(Nick) - OneCloud
       #
       # Hook allows recorded model an opportunity to update the changeset
       # before persisting but after any generic updates in the object_changes_adapter
