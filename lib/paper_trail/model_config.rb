@@ -4,27 +4,6 @@ module PaperTrail
   # Configures an ActiveRecord model, mostly at application boot time, but also
   # sometimes mid-request, with methods like enable/disable.
   class ModelConfig
-    DPR_DISABLE = <<-STR.squish.freeze
-      MyModel.paper_trail.disable is deprecated, use
-      PaperTrail.request.disable_model(MyModel). This new API makes it clear
-      that only the current request is affected, not all threads. Also, all
-      other request-variables now go through the same `request` method, so this
-      new API is more consistent.
-    STR
-    DPR_ENABLE = <<-STR.squish.freeze
-      MyModel.paper_trail.enable is deprecated, use
-      PaperTrail.request.enable_model(MyModel). This new API makes it clear
-      that only the current request is affected, not all threads. Also, all
-      other request-variables now go through the same `request` method, so this
-      new API is more consistent.
-    STR
-    DPR_ENABLED = <<-STR.squish.freeze
-      MyModel.paper_trail.enabled? is deprecated, use
-      PaperTrail.request.enabled_for_model?(MyModel). This new API makes it clear
-      that this is a setting specific to the current request, not all threads.
-      Also, all other request-variables now go through the same `request`
-      method, so this new API is more consistent.
-    STR
     E_CANNOT_RECORD_AFTER_DESTROY = <<-STR.strip_heredoc.freeze
       paper_trail.on_destroy(:after) is incompatible with ActiveRecord's
       belongs_to_required_by_default. Use on_destroy(:before)
@@ -39,27 +18,19 @@ module PaperTrail
       `abstract_class`. This is fine, but all application models must be
       configured to use concrete (not abstract) version models.
     STR
+    DPR_PASSING_ASSOC_NAME_DIRECTLY_TO_VERSIONS_OPTION = <<~STR.squish
+      Passing versions association name as `has_paper_trail versions: %{versions_name}`
+      is deprecated. Use `has_paper_trail versions: {name: %{versions_name}}` instead.
+      The hash you pass to `versions:` is now passed directly to `has_many`.
+    STR
+    DPR_CLASS_NAME_OPTION = <<~STR.squish
+      Passing Version class name as `has_paper_trail class_name: %{class_name}`
+      is deprecated. Use `has_paper_trail versions: {class_name: %{class_name}}`
+      instead. The hash you pass to `versions:` is now passed directly to `has_many`.
+    STR
 
     def initialize(model_class)
       @model_class = model_class
-    end
-
-    # @deprecated
-    def disable
-      ::ActiveSupport::Deprecation.warn(DPR_DISABLE, caller(1))
-      ::PaperTrail.request.disable_model(@model_class)
-    end
-
-    # @deprecated
-    def enable
-      ::ActiveSupport::Deprecation.warn(DPR_ENABLE, caller(1))
-      ::PaperTrail.request.enable_model(@model_class)
-    end
-
-    # @deprecated
-    def enabled?
-      ::ActiveSupport::Deprecation.warn(DPR_ENABLED, caller(1))
-      ::PaperTrail.request.enabled_for_model?(@model_class)
     end
 
     # Adds a callback that records a version after a "create" event.
@@ -69,22 +40,14 @@ module PaperTrail
       @model_class.after_create { |r|
         r.paper_trail.record_create if r.paper_trail.save_version?
       }
-      return if @model_class.paper_trail_options[:on].include?(:create)
-      @model_class.paper_trail_options[:on] << :create
+      append_option_uniquely(:on, :create)
     end
 
     # Adds a callback that records a version before or after a "destroy" event.
     #
     # @api public
     def on_destroy(recording_order = "before")
-      unless %w[after before].include?(recording_order.to_s)
-        raise ArgumentError, 'recording order can only be "after" or "before"'
-      end
-
-      if recording_order.to_s == "after" && cannot_record_after_destroy?
-        raise E_CANNOT_RECORD_AFTER_DESTROY
-      end
-
+      assert_valid_recording_order_for_on_destroy(recording_order)
       @model_class.send(
         "#{recording_order}_destroy",
         lambda do |r|
@@ -92,9 +55,7 @@ module PaperTrail
           r.paper_trail.record_destroy(recording_order)
         end
       )
-
-      return if @model_class.paper_trail_options[:on].include?(:destroy)
-      @model_class.paper_trail_options[:on] << :destroy
+      append_option_uniquely(:on, :destroy)
     end
 
     # Adds a callback that records a version after an "update" event.
@@ -116,19 +77,27 @@ module PaperTrail
       @model_class.after_update { |r|
         r.paper_trail.clear_version_instance
       }
-      return if @model_class.paper_trail_options[:on].include?(:update)
-      @model_class.paper_trail_options[:on] << :update
+      append_option_uniquely(:on, :update)
     end
 
     # Adds a callback that records a version after a "touch" event.
+    #
+    # Rails < 6.0 has a bug where dirty-tracking does not occur during
+    # a `touch`. (https://github.com/rails/rails/issues/33429) See also:
+    # https://github.com/paper-trail-gem/paper_trail/issues/1121
+    # https://github.com/paper-trail-gem/paper_trail/issues/1161
+    # https://github.com/paper-trail-gem/paper_trail/pull/1285
+    #
     # @api public
     def on_touch
       @model_class.after_touch { |r|
-        r.paper_trail.record_update(
-          force: true,
-          in_after_callback: true,
-          is_touch: true
-        )
+        if r.paper_trail.save_version?
+          r.paper_trail.record_update(
+            force: RAILS_LT_6_0,
+            in_after_callback: true,
+            is_touch: true
+          )
+        end
       }
     end
 
@@ -145,52 +114,126 @@ module PaperTrail
       setup_callbacks_from_options options[:on]
     end
 
+    # @api private
     def version_class
-      @_version_class ||= @model_class.version_class_name.constantize
+      @version_class ||= @model_class.version_class_name.constantize
     end
 
     private
 
-    def active_record_gem_version
-      Gem::Version.new(ActiveRecord::VERSION::STRING)
+    RAILS_LT_6_0 = ::ActiveRecord.gem_version < ::Gem::Version.new("6.0.0")
+    private_constant :RAILS_LT_6_0
+
+    # @api private
+    def append_option_uniquely(option, value)
+      collection = @model_class.paper_trail_options.fetch(option)
+      return if collection.include?(value)
+      collection << value
     end
 
     # Raises an error if the provided class is an `abstract_class`.
     # @api private
     def assert_concrete_activerecord_class(class_name)
       if class_name.constantize.abstract_class?
-        raise format(E_HPT_ABSTRACT_CLASS, @model_class, class_name)
+        raise Error, format(E_HPT_ABSTRACT_CLASS, @model_class, class_name)
+      end
+    end
+
+    # @api private
+    def assert_valid_recording_order_for_on_destroy(recording_order)
+      unless %w[after before].include?(recording_order.to_s)
+        raise ArgumentError, 'recording order can only be "after" or "before"'
+      end
+
+      if recording_order.to_s == "after" && cannot_record_after_destroy?
+        raise Error, E_CANNOT_RECORD_AFTER_DESTROY
       end
     end
 
     def cannot_record_after_destroy?
-      Gem::Version.new(ActiveRecord::VERSION::STRING).release >= Gem::Version.new("5") &&
-        ::ActiveRecord::Base.belongs_to_required_by_default
+      ::ActiveRecord::Base.belongs_to_required_by_default
+    end
+
+    def check_version_class_name(options)
+      # @api private - `version_class_name`
+      @model_class.class_attribute :version_class_name
+      if options[:class_name]
+        ::ActiveSupport::Deprecation.warn(
+          format(
+            DPR_CLASS_NAME_OPTION,
+            class_name: options[:class_name].inspect
+          ),
+          caller(1)
+        )
+        options[:versions][:class_name] = options[:class_name]
+      end
+      @model_class.version_class_name = options[:versions][:class_name] || "PaperTrail::Version"
+      assert_concrete_activerecord_class(@model_class.version_class_name)
+    end
+
+    def check_versions_association_name(options)
+      # @api private - versions_association_name
+      @model_class.class_attribute :versions_association_name
+      @model_class.versions_association_name = options[:versions][:name] || :versions
+    end
+
+    def define_has_many_versions(options)
+      options = ensure_versions_option_is_hash(options)
+      check_version_class_name(options)
+      check_versions_association_name(options)
+      scope = get_versions_scope(options)
+      @model_class.has_many(
+        @model_class.versions_association_name,
+        scope,
+        class_name: @model_class.version_class_name,
+        as: :item,
+        **options[:versions].except(:name, :scope)
+      )
+    end
+
+    def ensure_versions_option_is_hash(options)
+      unless options[:versions].is_a?(Hash)
+        if options[:versions]
+          ::ActiveSupport::Deprecation.warn(
+            format(
+              DPR_PASSING_ASSOC_NAME_DIRECTLY_TO_VERSIONS_OPTION,
+              versions_name: options[:versions].inspect
+            ),
+            caller(1)
+          )
+        end
+        options[:versions] = {
+          name: options[:versions]
+        }
+      end
+      options
+    end
+
+    # Process an `ignore`, `skip`, or `only` option.
+    def event_attribute_option(option_name)
+      [@model_class.paper_trail_options[option_name]].
+        flatten.
+        compact.
+        map { |attr| attr.is_a?(Hash) ? attr.stringify_keys : attr.to_s }
+    end
+
+    def get_versions_scope(options)
+      options[:versions][:scope] || -> { order(model.timestamp_sort_order) }
     end
 
     def setup_associations(options)
+      # @api private - version_association_name
       @model_class.class_attribute :version_association_name
       @model_class.version_association_name = options[:version] || :version
 
       # The version this instance was reified from.
+      # @api public
       @model_class.send :attr_accessor, @model_class.version_association_name
 
-      @model_class.class_attribute :version_class_name
-      @model_class.version_class_name = options[:class_name] || "PaperTrail::Version"
-
-      @model_class.class_attribute :versions_association_name
-      @model_class.versions_association_name = options[:versions] || :versions
-
+      # @api public - paper_trail_event
       @model_class.send :attr_accessor, :paper_trail_event
 
-      assert_concrete_activerecord_class(@model_class.version_class_name)
-
-      @model_class.has_many(
-        @model_class.versions_association_name,
-        -> { order(model.timestamp_sort_order) },
-        class_name: @model_class.version_class_name,
-        as: :item
-      )
+      define_has_many_versions(options)
     end
 
     def setup_callbacks_from_options(options_on = [])
@@ -200,20 +243,17 @@ module PaperTrail
     end
 
     def setup_options(options)
+      # @api public - paper_trail_options - Let's encourage plugins to use eg.
+      # `paper_trail_options[:versions][:class_name]` rather than
+      # `version_class_name` because the former is documented and the latter is
+      # not.
       @model_class.class_attribute :paper_trail_options
       @model_class.paper_trail_options = options.dup
 
       %i[ignore skip only].each do |k|
-        @model_class.paper_trail_options[k] = [@model_class.paper_trail_options[k]].
-          flatten.
-          compact.
-          map { |attr| attr.is_a?(Hash) ? attr.stringify_keys : attr.to_s }
+        @model_class.paper_trail_options[k] = event_attribute_option(k)
       end
-
       @model_class.paper_trail_options[:meta] ||= {}
-      if @model_class.paper_trail_options[:save_changes].nil?
-        @model_class.paper_trail_options[:save_changes] = true
-      end
     end
   end
 end

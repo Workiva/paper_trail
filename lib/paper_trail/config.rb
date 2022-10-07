@@ -8,8 +8,14 @@ module PaperTrail
   # configuration can be found in `paper_trail.rb`, others in `controller.rb`.
   class Config
     include Singleton
-    attr_accessor :serializer, :version_limit, :association_reify_error_behaviour,
-      :object_changes_adapter
+
+    attr_accessor(
+      :association_reify_error_behaviour,
+      :object_changes_adapter,
+      :serializer,
+      :version_limit,
+      :has_paper_trail_defaults
+    )
 
     def initialize
       # Variables which affect all threads, whose access is synchronized.
@@ -18,6 +24,7 @@ module PaperTrail
 
       # Variables which affect all threads, whose access is *not* synchronized.
       @serializer = PaperTrail::Serializers::YAML
+      @has_paper_trail_defaults = {}
     end
 
     # Indicates whether PaperTrail is on or off. Default: true.

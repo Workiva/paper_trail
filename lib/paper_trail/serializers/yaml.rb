@@ -9,10 +9,25 @@ module PaperTrail
       extend self # makes all instance methods become module methods as well
 
       def load(string)
-        ::YAML.load string
+        if use_safe_load?
+          ::YAML.safe_load(
+            string,
+            permitted_classes: ::ActiveRecord.yaml_column_permitted_classes,
+            aliases: true
+          )
+        elsif ::YAML.respond_to?(:unsafe_load)
+          ::YAML.unsafe_load(string)
+        else
+          ::YAML.load(string)
+        end
       end
 
+      # @param object (Hash | HashWithIndifferentAccess) - Coming from
+      # `recordable_object` `object` will be a plain `Hash`. However, due to
+      # recent [memory optimizations](https://github.com/paper-trail-gem/paper_trail/pull/1189),
+      # when coming from `recordable_object_changes`, it will be a `HashWithIndifferentAccess`.
       def dump(object)
+        object = object.to_hash if object.is_a?(HashWithIndifferentAccess)
         ::YAML.dump object
       end
 
@@ -22,16 +37,12 @@ module PaperTrail
         arel_field.matches("%\n#{field}: #{value}\n%")
       end
 
-      # Returns a SQL LIKE condition to be used to match the given field and
-      # value in the serialized `object_changes`.
-      def where_object_changes_condition(*)
-        raise <<-STR.squish.freeze
-          where_object_changes no longer supports reading YAML from a text
-          column. The old implementation was inaccurate, returning more records
-          than you wanted. This feature was deprecated in 8.1.0 and removed in
-          9.0.0. The json and jsonb datatypes are still supported. See
-          discussion at https://github.com/paper-trail-gem/paper_trail/pull/997
-        STR
+      private
+
+      # `use_yaml_unsafe_load` was added in 7.0.3.1, will be removed in 7.1.0?
+      def use_safe_load?
+        defined?(ActiveRecord.use_yaml_unsafe_load) &&
+          !ActiveRecord.use_yaml_unsafe_load
       end
     end
   end

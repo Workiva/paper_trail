@@ -40,17 +40,17 @@ RSpec.describe PaperTrail do
   end
 
   context "when enabled" do
+    after do
+      described_class.enabled = true
+    end
+
     it "affects all threads" do
       Thread.new { described_class.enabled = false }.join
       assert_equal false, described_class.enabled?
     end
-
-    after do
-      described_class.enabled = true
-    end
   end
 
-  context "default" do
+  context "when default" do
     it "has versioning off by default" do
       expect(described_class).not_to be_enabled
     end
@@ -63,7 +63,7 @@ RSpec.describe PaperTrail do
       expect(described_class).not_to be_enabled
     end
 
-    context "error within `with_versioning` block" do
+    context "when error within `with_versioning` block" do
       it "reverts the value of `PaperTrail.enabled?` to its previous state" do
         expect(described_class).not_to be_enabled
         expect { with_versioning { raise } }.to raise_error(RuntimeError)
@@ -72,7 +72,7 @@ RSpec.describe PaperTrail do
     end
   end
 
-  context "`versioning: true`", versioning: true do
+  context "with `versioning: true`", versioning: true do
     it "has versioning on by default" do
       expect(described_class).to be_enabled
     end
@@ -86,7 +86,7 @@ RSpec.describe PaperTrail do
     end
   end
 
-  context "`with_versioning` block at class level" do
+  context "with `with_versioning` block at class level" do
     it { expect(described_class).not_to be_enabled }
 
     with_versioning do
@@ -102,57 +102,6 @@ RSpec.describe PaperTrail do
   describe ".version" do
     it "returns the expected String" do
       expect(described_class.version).to eq(described_class::VERSION::STRING)
-    end
-  end
-
-  describe "deprecated methods" do
-    before do
-      allow(ActiveSupport::Deprecation).to receive(:warn)
-    end
-
-    shared_examples "it delegates to request" do |method, args|
-      it do
-        arguments = args || [no_args]
-        allow(described_class.request).to receive(method)
-        described_class.public_send(method, *args)
-        expect(described_class.request).to have_received(method).with(*arguments)
-        expect(ActiveSupport::Deprecation).to have_received(:warn)
-      end
-    end
-
-    it_behaves_like "it delegates to request", :enabled_for_model, [Widget, true]
-    it_behaves_like "it delegates to request", :enabled_for_model?, [Widget]
-    it_behaves_like "it delegates to request", :whodunnit=, [:some_whodunnit]
-    it_behaves_like "it delegates to request", :whodunnit, nil
-    it_behaves_like "it delegates to request", :controller_info=, [:some_whodunnit]
-    it_behaves_like "it delegates to request", :controller_info, nil
-
-    describe "#enabled_for_controller=" do
-      it "is deprecated" do
-        allow(::PaperTrail.request).to receive(:enabled=)
-        ::PaperTrail.enabled_for_controller = true
-        expect(::PaperTrail.request).to have_received(:enabled=).with(true)
-      end
-    end
-
-    describe "whodunnit with block" do
-      it "delegates to request" do
-        allow(described_class.request).to receive(:with)
-        described_class.whodunnit(:some_whodunnit) { :some_block }
-        expect(ActiveSupport::Deprecation).to have_received(:warn)
-        expect(described_class.request).to have_received(:with) do |*args, &block|
-          expect(args).to eq([{ whodunnit: :some_whodunnit }])
-          expect(block.call).to eq :some_block
-        end
-      end
-    end
-
-    describe "whodunnit with invalid arguments" do
-      it "raises an error" do
-        expect { described_class.whodunnit(:some_whodunnit) }.to raise_error(ArgumentError) do |e|
-          expect(e.message).to eq "Invalid arguments"
-        end
-      end
     end
   end
 end

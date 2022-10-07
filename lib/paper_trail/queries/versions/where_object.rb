@@ -18,7 +18,10 @@ module PaperTrail
 
         # @api private
         def execute
-          case @version_model_class.columns_hash["object"].type
+          column = @version_model_class.columns_hash["object"]
+          raise Error, "where_object requires an object column" unless column
+
+          case column.type
           when :jsonb
             jsonb
           when :json

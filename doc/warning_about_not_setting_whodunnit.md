@@ -9,14 +9,14 @@ After upgrading to PaperTrail 5, you see this warning:
 ## You want to track whodunnit
 
 Add `before_action :set_paper_trail_whodunnit` to your ApplicationController.
-See the PaperTrail readme for an example (https://git.io/vrsbt).
+See the PaperTrail readme for an example (https://github.com/paper-trail-gem/paper_trail#4a-finding-out-who-was-responsible-for-a-change).
 
 ## You don't want to track whodunnit
 
 If you no longer want to track whodunnit, you may disable this
 warning by overriding user_for_paper_trail to return nil.
 
-```
+```ruby
 # in application_controller.rb
 def user_for_paper_trail
   nil # disable whodunnit tracking

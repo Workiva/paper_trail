@@ -11,34 +11,34 @@ RSpec.describe Article, type: :model, versioning: true do
     end
   end
 
-  context "which updates an ignored column" do
+  context "when updating an ignored column" do
     it "not change the number of versions" do
       article = described_class.create
-      article.update_attributes(title: "My first title")
+      article.update(title: "My first title")
       expect(PaperTrail::Version.count).to(eq(1))
     end
   end
 
-  context "which updates an ignored column with truly Proc" do
+  context "when updating an ignored column with truly Proc" do
     it "not change the number of versions" do
       article = described_class.create
-      article.update_attributes(abstract: "ignore abstract")
+      article.update(abstract: "ignore abstract")
       expect(PaperTrail::Version.count).to(eq(1))
     end
   end
 
-  context "which updates an ignored column with falsy Proc" do
+  context "when updating an ignored column with falsy Proc" do
     it "change the number of versions" do
       article = described_class.create
-      article.update_attributes(abstract: "do not ignore abstract!")
+      article.update(abstract: "do not ignore abstract!")
       expect(PaperTrail::Version.count).to(eq(2))
     end
   end
 
-  context "which updates an ignored column, ignored with truly Proc and a selected column" do
+  context "when updating an ignored column, ignored with truly Proc and a selected column" do
     it "change the number of versions" do
       article = described_class.create
-      article.update_attributes(
+      article.update(
         title: "My first title",
         content: "Some text here.",
         abstract: "ignore abstract"
@@ -49,7 +49,7 @@ RSpec.describe Article, type: :model, versioning: true do
 
     it "have stored only non-ignored attributes" do
       article = described_class.create
-      article.update_attributes(
+      article.update(
         title: "My first title",
         content: "Some text here.",
         abstract: "ignore abstract"
@@ -59,10 +59,10 @@ RSpec.describe Article, type: :model, versioning: true do
     end
   end
 
-  context "which updates an ignored column, ignored with falsy Proc and a selected column" do
+  context "when updating an ignored column, ignored with falsy Proc and a selected column" do
     it "change the number of versions" do
       article = described_class.create
-      article.update_attributes(
+      article.update(
         title: "My first title",
         content: "Some text here.",
         abstract: "do not ignore abstract"
@@ -73,7 +73,7 @@ RSpec.describe Article, type: :model, versioning: true do
 
     it "stores only non-ignored attributes" do
       article = described_class.create
-      article.update_attributes(
+      article.update(
         title: "My first title",
         content: "Some text here.",
         abstract: "do not ignore abstract"
@@ -86,35 +86,35 @@ RSpec.describe Article, type: :model, versioning: true do
     end
   end
 
-  context "which updates a selected column" do
+  context "when updating a selected column" do
     it "change the number of versions" do
       article = described_class.create
-      article.update_attributes(content: "Some text here.")
+      article.update(content: "Some text here.")
       expect(PaperTrail::Version.count).to(eq(2))
       expect(article.versions.size).to(eq(2))
     end
   end
 
-  context "which updates a non-ignored and non-selected column" do
+  context "when updating a non-ignored and non-selected column" do
     it "not change the number of versions" do
       article = described_class.create
-      article.update_attributes(abstract: "Other abstract")
+      article.update(abstract: "Other abstract")
       expect(PaperTrail::Version.count).to(eq(1))
     end
   end
 
-  context "which updates a skipped column" do
+  context "when updating a skipped column" do
     it "not change the number of versions" do
       article = described_class.create
-      article.update_attributes(file_upload: "Your data goes here")
+      article.update(file_upload: "Your data goes here")
       expect(PaperTrail::Version.count).to(eq(1))
     end
   end
 
-  context "which updates a skipped column and a selected column" do
+  context "when updating a skipped column and a selected column" do
     it "change the number of versions" do
       article = described_class.create
-      article.update_attributes(
+      article.update(
         file_upload: "Your data goes here",
         content: "Some text here."
       )
@@ -123,7 +123,7 @@ RSpec.describe Article, type: :model, versioning: true do
 
     it "show the new version in the model's `versions` association" do
       article = described_class.create
-      article.update_attributes(
+      article.update(
         file_upload: "Your data goes here",
         content: "Some text here."
       )
@@ -132,7 +132,7 @@ RSpec.describe Article, type: :model, versioning: true do
 
     it "have stored only non-skipped attributes" do
       article = described_class.create
-      article.update_attributes(
+      article.update(
         file_upload: "Your data goes here",
         content: "Some text here."
       )
@@ -141,14 +141,14 @@ RSpec.describe Article, type: :model, versioning: true do
       ).to(eq("content" => [nil, "Some text here."]))
     end
 
-    context "and when updated again" do
+    context "when updated again" do
       it "have removed the skipped attributes when saving the previous version" do
         article = described_class.create
-        article.update_attributes(
+        article.update(
           file_upload: "Your data goes here",
           content: "Some text here."
         )
-        article.update_attributes(
+        article.update(
           file_upload: "More data goes here",
           content: "More text here."
         )
@@ -160,11 +160,11 @@ RSpec.describe Article, type: :model, versioning: true do
 
       it "have kept the non-skipped attributes in the previous version" do
         article = described_class.create
-        article.update_attributes(
+        article.update(
           file_upload: "Your data goes here",
           content: "Some text here."
         )
-        article.update_attributes(
+        article.update(
           file_upload: "More data goes here",
           content: "More text here."
         )
@@ -176,7 +176,7 @@ RSpec.describe Article, type: :model, versioning: true do
     end
   end
 
-  context "#destroy" do
+  describe "#destroy" do
     it "creates a version record" do
       article = described_class.create
       article.destroy
@@ -186,15 +186,78 @@ RSpec.describe Article, type: :model, versioning: true do
     end
   end
 
-  describe "#touch_with_version" do
-    it "creates a version, ignoring the :only option" do
-      article = described_class.create
+  context "with an item" do
+    let(:article) { described_class.new(title: initial_title) }
+    let(:initial_title) { "Foobar" }
 
-      allow(::ActiveSupport::Deprecation).to receive(:warn)
-      expect { article.paper_trail.touch_with_version }.to change {
-        ::PaperTrail::Version.count
-      }.by(+1)
-      expect(::ActiveSupport::Deprecation).to have_received(:warn).once
+    context "when it is created" do
+      before { article.save }
+
+      it "store fixed meta data" do
+        expect(article.versions.last.answer).to(eq(42))
+      end
+
+      it "store dynamic meta data which is independent of the item" do
+        expect(article.versions.last.question).to(eq("31 + 11 = 42"))
+      end
+
+      it "store dynamic meta data which depends on the item" do
+        expect(article.versions.last.article_id).to(eq(article.id))
+      end
+
+      it "store dynamic meta data based on a method of the item" do
+        expect(article.versions.last.action).to(eq(article.action_data_provider_method))
+      end
+
+      it "store dynamic meta data based on an attribute of the item at creation" do
+        expect(article.versions.last.title).to(eq(initial_title))
+      end
+    end
+
+    context "when it is created, then updated" do
+      before do
+        article.save
+        article.update!(content: "Better text.", title: "Rhubarb")
+      end
+
+      it "store fixed meta data" do
+        expect(article.versions.last.answer).to(eq(42))
+      end
+
+      it "store dynamic meta data which is independent of the item" do
+        expect(article.versions.last.question).to(eq("31 + 11 = 42"))
+      end
+
+      it "store dynamic meta data which depends on the item" do
+        expect(article.versions.last.article_id).to(eq(article.id))
+      end
+
+      it "store dynamic meta data based on an attribute of the item prior to the update" do
+        expect(article.versions.last.title).to(eq(initial_title))
+      end
+    end
+
+    context "when it is created, then destroyed" do
+      before do
+        article.save
+        article.destroy
+      end
+
+      it "store fixed metadata" do
+        expect(article.versions.last.answer).to(eq(42))
+      end
+
+      it "store dynamic metadata which is independent of the item" do
+        expect(article.versions.last.question).to(eq("31 + 11 = 42"))
+      end
+
+      it "store dynamic metadata which depends on the item" do
+        expect(article.versions.last.article_id).to(eq(article.id))
+      end
+
+      it "store dynamic metadata based on attribute of item prior to destruction" do
+        expect(article.versions.last.title).to(eq(initial_title))
+      end
     end
   end
 end

@@ -22,7 +22,7 @@ RSpec.describe PostWithStatus, type: :model do
       assert_equal %w[draft published], version.changeset["status"]
     end
 
-    context "storing enum object_changes" do
+    context "when storing enum object_changes" do
       it "saves the enum value properly in versions object_changes" do
         post.published!
         post.archived!
@@ -31,21 +31,16 @@ RSpec.describe PostWithStatus, type: :model do
       end
     end
 
-    describe "#touch_with_version" do
-      it "preserves the enum value (and all other attributes)" do
-        post = described_class.create(status: :draft)
-        expect(post.versions.count).to eq(1)
-        expect(post.status).to eq("draft")
-        allow(::ActiveSupport::Deprecation).to receive(:warn)
-        post.paper_trail.touch_with_version
-        expect(::ActiveSupport::Deprecation).to have_received(:warn).once
-        expect(post.versions.count).to eq(2)
-        expect(post.versions.last[:object]).to include("status: 0")
-        expect(post.paper_trail.previous_version.status).to eq("draft")
-      end
-    end
-
     describe "#save_with_version" do
+      context "when passing *args" do
+        it "passes *args down correctly" do
+          post = described_class.create(status: :draft)
+          expect do
+            post.paper_trail.save_with_version(validate: false)
+          end.to change(post.versions, :count).by(1)
+        end
+      end
+
       it "preserves the enum value (and all other attributes)" do
         post = described_class.create(status: :draft)
         expect(post.versions.count).to eq(1)

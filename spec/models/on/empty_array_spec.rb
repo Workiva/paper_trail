@@ -12,19 +12,6 @@ module On
       end
     end
 
-    describe "#touch_with_version" do
-      it "creates a version record" do
-        record = described_class.create(name: "Alice")
-        allow(::ActiveSupport::Deprecation).to receive(:warn)
-        record.paper_trail.touch_with_version
-        expect(::ActiveSupport::Deprecation).to have_received(:warn).once
-        expect(record.versions.length).to(eq(1))
-        v = record.versions.first
-        expect(v.event).to(eq("update"))
-        expect(v.object_deserialized.fetch("name")).to eq("Alice")
-      end
-    end
-
     describe ".paper_trail.update_columns" do
       it "creates a version record" do
         widget = Widget.create
@@ -34,10 +21,10 @@ module On
       end
     end
 
-    describe "#update_attributes" do
+    describe "#update" do
       it "does not create any version records" do
         record = described_class.create(name: "Alice")
-        record.update_attributes(name: "blah")
+        record.update(name: "blah")
         expect(record.versions.length).to(eq(0))
       end
     end

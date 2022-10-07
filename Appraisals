@@ -8,26 +8,24 @@
 # > appraisal. If something is specified in both the Gemfile and an appraisal,
 # > the version from the appraisal takes precedence.
 # > https://github.com/thoughtbot/appraisal
-
-appraise "ar-4.2" do
-  gem "activerecord", "~> 4.2.10"
-  gem "database_cleaner", "~> 1.6"
+#
+#
+appraise "rails-5.2" do
+  gem "rails", "~> 5.2.4"
+  gem "rails-controller-testing", "~> 1.0.2"
 end
 
-appraise "ar-5.1" do
-  gem "activerecord", "~> 5.1.5"
-  gem "rails-controller-testing"
+appraise "rails-6.0" do
+  gem "rails", "~> 6.0.3"
+  gem "rails-controller-testing", "~> 1.0.3"
 end
 
-appraise "ar-5.2" do
-  gem "activerecord", "~> 5.2.0.rc2"
-  gem "rails-controller-testing"
+appraise "rails-6.1" do
+  gem "rails", "~> 6.1.0"
+  gem "rails-controller-testing", "~> 1.0.5"
+end
 
-  # bundler does not handle rc versions well
-  # https://github.com/paper-trail-gem/paper_trail/pull/1067
-  # so we specify activesupport, actionpack, and railties, which we
-  # would not normally do, as you can see with other rails versions above.
-  gem "activesupport", "~> 5.2.0.rc2"
-  gem "actionpack", "~> 5.2.0.rc2"
-  gem "railties", "~> 5.2.0.rc2"
+appraise "rails-7.0" do
+  gem "rails", "~> 7.0.3.1"
+  gem "rails-controller-testing", "~> 1.0.5"
 end

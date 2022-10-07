@@ -8,38 +8,25 @@
 # can revisit this decision.
 require "active_support/all"
 
-# AR is required for, eg. has_paper_trail.rb, so we could put this `require` in
-# all of those files, but it seems easier to troubleshoot if we just make sure
-# AR is loaded here before loading *any* of PT. See discussion of
-# performance/simplicity tradeoff for activesupport above.
-require "active_record"
-
-require "request_store"
+require "paper_trail/errors"
 require "paper_trail/cleaner"
+require "paper_trail/compatibility"
 require "paper_trail/config"
-require "paper_trail/has_paper_trail"
 require "paper_trail/record_history"
-require "paper_trail/reifier"
 require "paper_trail/request"
-require "paper_trail/version_concern"
 require "paper_trail/version_number"
 require "paper_trail/serializers/json"
-require "paper_trail/serializers/yaml"
 
 # An ActiveRecord extension that tracks changes to your models, for auditing or
 # versioning.
 module PaperTrail
-  E_RAILS_NOT_LOADED = <<-EOS.squish.freeze
-    PaperTrail has been loaded too early, before rails is loaded. This can
-    happen when another gem defines the ::Rails namespace, then PT is loaded,
-    all before rails is loaded. You may want to reorder your Gemfile, or defer
-    the loading of PT by using `require: false` and a manual require elsewhere.
-  EOS
   E_TIMESTAMP_FIELD_CONFIG = <<-EOS.squish.freeze
     PaperTrail.timestamp_field= has been removed, without replacement. It is no
     longer configurable. The timestamp column in the versions table must now be
     named created_at.
   EOS
+
+  RAILS_GTE_7_0 = ::ActiveRecord.gem_version >= ::Gem::Version.new("7.0.0")
 
   extend PaperTrail::Cleaner
 
@@ -55,46 +42,6 @@ module PaperTrail
     # @api public
     def enabled?
       !!PaperTrail.config.enabled
-    end
-
-    # @deprecated
-    def enabled_for_controller=(value)
-      ::ActiveSupport::Deprecation.warn(
-        "PaperTrail.enabled_for_controller= is deprecated, " \
-        "use PaperTrail.request.enabled=",
-        caller(1)
-      )
-      request.enabled = value
-    end
-
-    # @deprecated
-    def enabled_for_controller?
-      ::ActiveSupport::Deprecation.warn(
-        "PaperTrail.enabled_for_controller? is deprecated, " \
-        "use PaperTrail.request.enabled?",
-        caller(1)
-      )
-      request.enabled?
-    end
-
-    # @deprecated
-    def enabled_for_model(model, value)
-      ::ActiveSupport::Deprecation.warn(
-        "PaperTrail.enabled_for_model is deprecated, " \
-        "use PaperTrail.request.enabled_for_model",
-        caller(1)
-      )
-      request.enabled_for_model(model, value)
-    end
-
-    # @deprecated
-    def enabled_for_model?(model)
-      ::ActiveSupport::Deprecation.warn(
-        "PaperTrail.enabled_for_model? is deprecated, " \
-        "use PaperTrail.request.enabled_for_model?",
-        caller(1)
-      )
-      request.enabled_for_model?(model)
     end
 
     # Returns PaperTrail's `::Gem::Version`, convenient for comparisons. This is
@@ -124,7 +71,7 @@ module PaperTrail
     #
     # @api public
     def request(options = nil, &block)
-      if options.nil? && !block_given?
+      if options.nil? && !block
         Request
       else
         Request.with(options, &block)
@@ -134,54 +81,7 @@ module PaperTrail
     # Set the field which records when a version was created.
     # @api public
     def timestamp_field=(_field_name)
-      raise(E_TIMESTAMP_FIELD_CONFIG)
-    end
-
-    # @deprecated
-    def whodunnit=(value)
-      ::ActiveSupport::Deprecation.warn(
-        "PaperTrail.whodunnit= is deprecated, use PaperTrail.request.whodunnit=",
-        caller(1)
-      )
-      request.whodunnit = value
-    end
-
-    # @deprecated
-    def whodunnit(value = nil, &block)
-      if value.nil?
-        ::ActiveSupport::Deprecation.warn(
-          "PaperTrail.whodunnit is deprecated, use PaperTrail.request.whodunnit",
-          caller(1)
-        )
-        request.whodunnit
-      elsif block_given?
-        ::ActiveSupport::Deprecation.warn(
-          "Passing a block to PaperTrail.whodunnit is deprecated, " \
-          'use PaperTrail.request(whodunnit: "John") do .. end',
-          caller(1)
-        )
-        request(whodunnit: value, &block)
-      else
-        raise ArgumentError, "Invalid arguments"
-      end
-    end
-
-    # @deprecated
-    def controller_info=(value)
-      ::ActiveSupport::Deprecation.warn(
-        "PaperTrail.controller_info= is deprecated, use PaperTrail.request.controller_info=",
-        caller(1)
-      )
-      request.controller_info = value
-    end
-
-    # @deprecated
-    def controller_info
-      ::ActiveSupport::Deprecation.warn(
-        "PaperTrail.controller_info is deprecated, use PaperTrail.request.controller_info",
-        caller(1)
-      )
-      request.controller_info
+      raise Error, E_TIMESTAMP_FIELD_CONFIG
     end
 
     # Set the PaperTrail serializer. This setting affects all threads.
@@ -212,23 +112,18 @@ module PaperTrail
   end
 end
 
-ActiveSupport.on_load(:active_record) do
-  include PaperTrail::Model
-end
-
-# Require frameworks
-if defined?(::Rails)
-  # Rails module is sometimes defined by gems like rails-html-sanitizer
-  # so we check for presence of Rails.application.
-  if defined?(::Rails.application)
-    require "paper_trail/frameworks/rails"
-  else
-    ::Kernel.warn(::PaperTrail::E_RAILS_NOT_LOADED)
-  end
+# PT is built on ActiveRecord, but does not require Rails. If Rails is defined,
+# our Railtie makes sure not to load the AR-dependent parts of PT until AR is
+# ready. A typical Rails `application.rb` has:
+#
+# ```
+# require 'rails/all' # Defines `Rails`
+# Bundler.require(*Rails.groups) # require 'paper_trail' (this file)
+# ```
+#
+# Non-rails applications should take similar care to load AR before PT.
+if defined?(Rails)
+  require "paper_trail/frameworks/rails"
 else
   require "paper_trail/frameworks/active_record"
 end
-
-# https://github.com/paper-trail-gem/paper_trail/issues/1070
-# https://github.com/westonganger/paper_trail-association_tracking/issues/2
-require "paper_trail-association_tracking"

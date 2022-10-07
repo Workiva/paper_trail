@@ -11,27 +11,27 @@ module PaperTrail
     end
 
     describe ".disable_model" do
+      after do
+        PaperTrail.request.enable_model(Widget)
+      end
+
       it "sets enabled_for_model? to false" do
         expect(PaperTrail.request.enabled_for_model?(Widget)).to eq(true)
         PaperTrail.request.disable_model(Widget)
         expect(PaperTrail.request.enabled_for_model?(Widget)).to eq(false)
       end
-
-      after do
-        PaperTrail.request.enable_model(Widget)
-      end
     end
 
     describe ".enabled_for_model" do
+      after do
+        PaperTrail.request.enable_model(Widget)
+      end
+
       it "sets enabled_for_model? to true" do
         PaperTrail.request.enabled_for_model(Widget, false)
         expect(PaperTrail.request.enabled_for_model?(Widget)).to eq(false)
         PaperTrail.request.enabled_for_model(Widget, true)
         expect(PaperTrail.request.enabled_for_model?(Widget)).to eq(true)
-      end
-
-      after do
-        PaperTrail.request.enable_model(Widget)
       end
     end
 
@@ -42,15 +42,15 @@ module PaperTrail
     end
 
     describe ".enabled=" do
+      after do
+        PaperTrail.request.enabled = true
+      end
+
       it "sets enabled? to true" do
         PaperTrail.request.enabled = true
         expect(PaperTrail.request.enabled?).to eq(true)
         PaperTrail.request.enabled = false
         expect(PaperTrail.request.enabled?).to eq(false)
-      end
-
-      after do
-        PaperTrail.request.enabled = true
       end
     end
 
@@ -61,26 +61,26 @@ module PaperTrail
     end
 
     describe ".controller_info=" do
+      after do
+        PaperTrail.request.controller_info = {}
+      end
+
       it "sets controller_info" do
         PaperTrail.request.controller_info = { foo: :bar }
         expect(PaperTrail.request.controller_info).to eq(foo: :bar)
       end
-
-      after do
-        PaperTrail.request.controller_info = {}
-      end
     end
 
     describe ".enable_model" do
+      after do
+        PaperTrail.request.enable_model(Widget)
+      end
+
       it "sets enabled_for_model? to true" do
         PaperTrail.request.disable_model(Widget)
         expect(PaperTrail.request.enabled_for_model?(Widget)).to eq(false)
         PaperTrail.request.enable_model(Widget)
         expect(PaperTrail.request.enabled_for_model?(Widget)).to eq(true)
-      end
-
-      after do
-        PaperTrail.request.enable_model(Widget)
       end
     end
 
@@ -103,8 +103,8 @@ module PaperTrail
     end
 
     describe ".with" do
-      context "block given" do
-        context "all allowed options" do
+      context "with a block given" do
+        context "with all allowed options" do
           it "sets options only for the block passed" do
             described_class.whodunnit = "some_whodunnit"
             described_class.enabled_for_model(Widget, true)
@@ -132,7 +132,7 @@ module PaperTrail
           end
         end
 
-        context "some invalid options" do
+        context "with some invalid options" do
           it "raises an invalid option error" do
             subject = proc do
               described_class.with(whodunnit: "blah", invalid_option: "foo") do
@@ -140,13 +140,13 @@ module PaperTrail
               end
             end
 
-            expect { subject.call }.to raise_error(PaperTrail::Request::InvalidOption) do |e|
+            expect { subject.call }.to raise_error(PaperTrail::InvalidOption) do |e|
               expect(e.message).to eq "Invalid option: invalid_option"
             end
           end
         end
 
-        context "all invalid options" do
+        context "with all invalid options" do
           it "raises an invalid option error" do
             subject = proc do
               described_class.with(invalid_option: "foo", other_invalid_option: "blah") do
@@ -154,7 +154,7 @@ module PaperTrail
               end
             end
 
-            expect { subject.call }.to raise_error(PaperTrail::Request::InvalidOption) do |e|
+            expect { subject.call }.to raise_error(PaperTrail::InvalidOption) do |e|
               expect(e.message).to eq "Invalid option: invalid_option"
             end
           end

@@ -3,11 +3,13 @@
 require "spec_helper"
 require "support/custom_json_serializer"
 
-RSpec.describe(PaperTrail, versioning: true) do
-  context "YAML serializer" do
+RSpec.describe("PaperTrail serializers", versioning: true) do
+  context "with YAML serializer" do
     it "saves the expected YAML in the object column" do
       customer = Customer.create(name: "Some text.")
-      original_attributes = customer.paper_trail.attributes_before_change(false)
+      original_attributes = PaperTrail::Events::Base.
+        new(customer, false).
+        send(:nonskipped_attributes_before_change, false)
       customer.update(name: "Some more text.")
       expect(customer.versions.length).to(eq(2))
       expect(customer.versions[0].reify).to(be_nil)
@@ -17,7 +19,7 @@ RSpec.describe(PaperTrail, versioning: true) do
     end
   end
 
-  context "JSON Serializer" do
+  context "with JSON Serializer" do
     before do
       PaperTrail.configure do |config|
         config.serializer = PaperTrail::Serializers::JSON
@@ -30,7 +32,9 @@ RSpec.describe(PaperTrail, versioning: true) do
 
     it "reify with JSON serializer" do
       customer = Customer.create(name: "Some text.")
-      original_attributes = customer.paper_trail.attributes_before_change(false)
+      original_attributes = PaperTrail::Events::Base.
+        new(customer, false).
+        send(:nonskipped_attributes_before_change, false)
       customer.update(name: "Some more text.")
       expect(customer.versions.length).to(eq(2))
       expect(customer.versions[0].reify).to(be_nil)
@@ -51,7 +55,7 @@ RSpec.describe(PaperTrail, versioning: true) do
     end
   end
 
-  context "Custom Serializer" do
+  context "with Custom Serializer" do
     before do
       PaperTrail.configure { |config| config.serializer = CustomJsonSerializer }
     end
@@ -62,10 +66,10 @@ RSpec.describe(PaperTrail, versioning: true) do
 
     it "reify with custom serializer" do
       customer = Customer.create
-      original_attributes = customer.
-        paper_trail.
-        attributes_before_change(false).
-        reject { |_k, v| v.nil? }
+      original_attributes = PaperTrail::Events::Base.
+        new(customer, false).
+        send(:nonskipped_attributes_before_change, false).
+        compact
       customer.update(name: "Some more text.")
       expect(customer.versions.length).to(eq(2))
       expect(customer.versions[0].reify).to(be_nil)

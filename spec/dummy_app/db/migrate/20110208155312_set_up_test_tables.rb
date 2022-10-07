@@ -6,13 +6,7 @@
 # Starting with AR 5.1, we must specify which version of AR we are using.
 # I tried using `const_get` but I got a `NameError`, then I learned about
 # `::ActiveRecord::Migration::Current`.
-class SetUpTestTables < (
-  if ::ActiveRecord::VERSION::MAJOR >= 5
-    ::ActiveRecord::Migration::Current
-  else
-    ::ActiveRecord::Migration
-  end
-)
+class SetUpTestTables < ::ActiveRecord::Migration::Current
   MYSQL_ADAPTERS = [
     "ActiveRecord::ConnectionAdapters::MysqlAdapter",
     "ActiveRecord::ConnectionAdapters::Mysql2Adapter"
@@ -77,10 +71,11 @@ class SetUpTestTables < (
       end
     end
 
-    create_table :versions, versions_table_options do |t|
-      t.string   :item_type, item_type_options
-      t.integer  :item_id,   null: false
-      t.string   :event,     null: false
+    create_table :versions, **versions_table_options do |t|
+      t.string   :item_type, **item_type_options(null: false)
+      t.bigint   :item_id, null: false
+      t.string   :item_subtype, **item_type_options(null: true)
+      t.string   :event, null: false
       t.string   :whodunnit
       t.text     :object, limit: TEXT_BYTES
       t.text     :object_changes, limit: TEXT_BYTES
@@ -100,16 +95,6 @@ class SetUpTestTables < (
     end
     add_index :versions, %i[item_type item_id]
 
-    create_table :version_associations do |t|
-      t.integer  :version_id
-      t.string   :foreign_key_name, null: false
-      t.integer  :foreign_key_id
-    end
-    add_index :version_associations, [:version_id]
-    add_index :version_associations,
-      %i[foreign_key_name foreign_key_id],
-      name: "index_version_associations_on_foreign_key"
-
     create_table :post_versions, force: true do |t|
       t.string   :item_type, null: false
       t.integer  :item_id,   null: false
@@ -124,20 +109,42 @@ class SetUpTestTables < (
     end
     add_index :post_versions, %i[item_type item_id]
 
-    if ENV["DB"] == "postgres" && ::ActiveRecord::VERSION::MAJOR >= 4
-      create_table :json_versions, force: true do |t|
-        t.string   :item_type, null: false
-        t.integer  :item_id,   null: false
-        t.string   :event,     null: false
-        t.string   :whodunnit
-        t.json     :object
-        t.json     :object_changes
-        t.datetime :created_at, limit: 6
+    # Uses custom versions table `no_object_versions`.
+    create_table :no_objects, force: true do |t|
+      t.string :letter, null: false, limit: 1
+      t.timestamps null: false, limit: 6
+    end
+
+    # This table omits the `object` column.
+    create_table :no_object_versions, force: true do |t|
+      t.string   :item_type, null: false
+      t.integer  :item_id,   null: false
+      t.string   :event,     null: false
+      t.string   :whodunnit
+      t.datetime :created_at, limit: 6
+      t.text     :object_changes, limit: TEXT_BYTES
+      t.integer  :metadatum
+    end
+    add_index :no_object_versions, %i[item_type item_id]
+
+    if ENV["DB"] == "postgres"
+      %w[json jsonb].each do |j|
+        table_name = j + "_versions"
+        create_table table_name, force: true do |t|
+          t.string   :item_type, null: false
+          t.bigint   :item_id, null: false
+          t.string   :event, null: false
+          t.string   :whodunnit
+          t.public_send j, :object
+          t.public_send j, :object_changes
+          t.datetime :created_at, limit: 6
+        end
+        add_index table_name, %i[item_type item_id]
       end
-      add_index :json_versions, %i[item_type item_id]
     end
 
     create_table :not_on_updates, force: true do |t|
+      t.string :name
       t.timestamps null: true, limit: 6
     end
 
@@ -227,6 +234,10 @@ class SetUpTestTables < (
       t.integer :animal_id
     end
 
+    create_table :plants, force: true do |t|
+      t.string :species # custom single table inheritance column
+    end
+
     create_table :documents, force: true do |t|
       t.string :name
     end
@@ -242,20 +253,22 @@ class SetUpTestTables < (
     end
 
     create_table :translations, force: true do |t|
-      t.string    :headline
       t.string    :content
+      t.string    :draft_status
+      t.string    :headline
       t.string    :language_code
-      t.string    :type
     end
 
     create_table :gadgets, force: true do |t|
       t.string    :name
       t.string    :brand
+      t.string    :color
       t.timestamps null: true, limit: 6
     end
 
     create_table :customers, force: true do |t|
       t.string :name
+      t.datetime :touched_at, limit: 6
     end
 
     create_table :orders, force: true do |t|
@@ -269,8 +282,9 @@ class SetUpTestTables < (
     end
 
     create_table :fruits, force: true do |t|
-      t.string :name
       t.string :color
+      t.integer :mass
+      t.string :name
     end
 
     create_table :boolits, force: true do |t|
@@ -345,8 +359,16 @@ class SetUpTestTables < (
 
     create_table :families do |t|
       t.string :name
+      t.string :type            # For STI support
+      t.string :path_to_stardom # Only used for celebrity families
       t.integer :parent_id
       t.integer :partner_id
+    end
+
+    create_table :vegetables, force: true do |t|
+      t.string :color
+      t.integer :mass
+      t.string :name
     end
   end
 
@@ -357,8 +379,8 @@ class SetUpTestTables < (
 
   private
 
-  def item_type_options
-    opt = { null: false }
+  def item_type_options(null:)
+    opt = { null: null }
     opt[:limit] = 191 if mysql?
     opt
   end

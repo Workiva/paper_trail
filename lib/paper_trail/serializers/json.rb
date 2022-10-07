@@ -31,16 +31,6 @@ module PaperTrail
           arel_field.matches("%\"#{field}\":#{json_value}%")
         end
       end
-
-      def where_object_changes_condition(*)
-        raise <<-STR.squish.freeze
-          where_object_changes no longer supports reading JSON from a text
-          column. The old implementation was inaccurate, returning more records
-          than you wanted. This feature was deprecated in 7.1.0 and removed in
-          8.0.0. The json and jsonb datatypes are still supported. See the
-          discussion at https://github.com/paper-trail-gem/paper_trail/issues/803
-        STR
-      end
     end
   end
 end
