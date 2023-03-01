@@ -166,27 +166,6 @@ module PaperTrail
     # PT-AT extends this method to add its transaction id.
     #
     # @api private
-    def recordable_object_changes(changes)
-      if PaperTrail.config.object_changes_adapter
-        changes = PaperTrail.config.object_changes_adapter.diff(changes)
-      end
-
-      #
-      # Note(Nick) - OneCloud
-      #
-      # Hook allows recorded model an opportunity to update the changeset
-      # before persisting but after any generic updates in the object_changes_adapter
-      if @record.paper_trail_options[:before_changeset_save]
-        changes = @record.send(@record.paper_trail_options[:before_changeset_save], changes)
-      end
-
-      if @record.class.paper_trail.version_class.object_changes_col_is_json?
-        changes
-      else
-        PaperTrail.serializer.dump(changes)
-      end
-    end
-
     def data_for_update_columns
       {}
     end
